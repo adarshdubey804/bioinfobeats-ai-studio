@@ -1,3 +1,4 @@
+import logging
 import shutil
 from pathlib import Path
 from app.worker.celery_app import celery_app
@@ -6,6 +7,24 @@ from app.models.workflow import Workflow
 from app.models.media_asset import MediaAsset
 from app.rendering.service import render_video
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+def _persist_progress(workflow_id: str, render_id: str, progress: dict) -> None:
+    session = SessionLocal()
+    try:
+        item = session.get(Workflow, workflow_id)
+        if item is None:
+            return
+        config = item.config or {}
+        current = config.get("video_render") or {}
+        if current.get("id") != render_id:
+            return
+        item.config = {**config, "video_render": {**current, "status": "rendering", "progress": progress}}
+        session.commit()
+    finally:
+        session.close()
 
 def _prepare_assets(db, user_id, render_id, request):
     root = Path(settings.media_storage_dir).resolve()
@@ -68,14 +87,16 @@ def render_workflow_video(self, workflow_id: str, render_id: str):
         db.commit()
         try:
             scene_paths, music_path, logo_path = _prepare_assets(db, item.owner_id, render_id, request)
-            url = render_video(render_id, request["title"], request["script"], request["aspect"], request.get("scenes"), music_path or request.get("music_filename"), request.get("visual_mode", "auto"), request.get("music_volume", 0.12), scene_paths, logo_path, request.get("brand_logo_asset_id"), request.get("music_asset_id"))
+            progress_callback = lambda progress: _persist_progress(workflow_id, render_id, progress)
+            url = render_video(render_id, request["title"], request["script"], request["aspect"], request.get("scenes"), music_path or request.get("music_filename"), request.get("visual_mode", "auto"), request.get("music_volume", 0.12), scene_paths, logo_path, request.get("brand_logo_asset_id"), request.get("music_asset_id"), progress_callback)
             item = db.get(Workflow, workflow_id)
-            item.config = {**(item.config or {}), "video_render": {**(item.config or {})["video_render"], "status": "ready_for_review", "url": url}}
+            item.config = {**(item.config or {}), "video_render": {**(item.config or {})["video_render"], "status": "ready_for_review", "url": url, "progress": {"stage": "complete", "percent": 100, "message": "Video render completed and validated"}}}
             db.commit()
             return {"workflow_id": workflow_id, "status": "ready_for_review", "url": url}
         except Exception as exc:
+            logger.exception("Video render failed (workflow_id=%s, render_id=%s)", workflow_id, render_id)
             item = db.get(Workflow, workflow_id)
-            item.config = {**(item.config or {}), "video_render": {**(item.config or {})["video_render"], "status": "retrying" if self.request.retries < self.max_retries else "failed", "error": str(exc)[:1000]}}
+            item.config = {**(item.config or {}), "video_render": {**(item.config or {})["video_render"], "status": "retrying" if self.request.retries < self.max_retries else "failed", "error": str(exc)[:1200], "progress": {"stage": "failed", "percent": 0, "message": "Render failed; inspect the error details and worker logs."}}}
             db.commit()
             raise
     finally:

@@ -1,6 +1,7 @@
 """Narration, timed scene animation, captions and FFmpeg assembly."""
 from __future__ import annotations
 import json
+import logging
 import re
 import subprocess
 from pathlib import Path
@@ -11,8 +12,39 @@ from app.rendering.visuals import generate_scene_image
 from app.rendering.storyboard import build_storyboard
 from app.rendering.motion import generate_motion_clip, MotionProviderError
 
+logger = logging.getLogger(__name__)
+
+
 class RenderConfigurationError(RuntimeError):
     pass
+
+
+class RenderCommandError(RuntimeError):
+    """FFmpeg/ffprobe failure with bounded diagnostic output."""
+    pass
+
+
+def _report_progress(callback, stage: str, percent: int, message: str) -> None:
+    if callback:
+        callback({"stage": stage, "percent": percent, "message": message})
+
+
+def _validate_render_output(path: Path) -> dict:
+    if not path.is_file() or path.stat().st_size < 1024:
+        raise RenderCommandError("Final MP4 is missing or unexpectedly small.")
+    raw = _run([
+        "ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height",
+        "-of", "json", str(path),
+    ])
+    try:
+        metadata = json.loads(raw)
+        duration = float(metadata.get("format", {}).get("duration", 0))
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise RenderCommandError("Final MP4 metadata could not be read.") from exc
+    streams = metadata.get("streams", [])
+    if duration <= 0 or not any(item.get("codec_type") == "video" for item in streams) or not any(item.get("codec_type") == "audio" for item in streams):
+        raise RenderCommandError("Final MP4 must contain playable audio and video streams.")
+    return {"duration_seconds": duration, "size_bytes": path.stat().st_size, "streams": streams}
 
 def _safe_id(value: str) -> str:
     if not re.fullmatch(r"[a-f0-9-]{8,64}", value):
@@ -20,8 +52,16 @@ def _safe_id(value: str) -> str:
     return value
 
 def _run(command: list[str], timeout: int | None = None) -> str:
-    result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=timeout or settings.render_timeout_seconds * 4)
-    return result.stdout.strip()
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=timeout or settings.render_timeout_seconds * 4)
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as exc:
+        diagnostic = (exc.stderr or exc.stdout or "No FFmpeg diagnostic was returned.").strip()
+        logger.error("Media command failed (exit=%s): %s", exc.returncode, diagnostic[-2000:])
+        raise RenderCommandError(f"Media processing failed (exit {exc.returncode}): {diagnostic[-1200:]}") from exc
+    except subprocess.TimeoutExpired as exc:
+        logger.error("Media command timed out after %s seconds", exc.timeout)
+        raise RenderCommandError("Media processing timed out. Increase RENDER_TIMEOUT_SECONDS or reduce scene complexity.") from exc
 
 def _duration(path: Path) -> float:
     value = _run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)])
@@ -78,7 +118,7 @@ def _caption_filter(srt_path: Path, width: int) -> str:
     font_size = 24 if width < 1500 else 32
     return f"subtitles='{safe}':force_style='FontName=DejaVu Sans,FontSize={font_size},PrimaryColour=&H00FFFFFF,OutlineColour=&H00101820,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=90'"
 
-def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto", music_volume: float = 0.12, scene_asset_paths: dict[int, str] | None = None, brand_logo_path: str | None = None, brand_logo_asset_id: str | None = None, music_asset_id: str | None = None) -> str:
+def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto", music_volume: float = 0.12, scene_asset_paths: dict[int, str] | None = None, brand_logo_path: str | None = None, brand_logo_asset_id: str | None = None, music_asset_id: str | None = None, progress_callback=None) -> str:
     if not settings.elevenlabs_api_key or not settings.elevenlabs_voice_id:
         raise RenderConfigurationError("Configure ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to render narration.")
     render_id = _safe_id(render_id)
@@ -87,6 +127,8 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     if root not in job_dir.parents:
         raise ValueError("Invalid output directory")
     job_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Render %s started (aspect=%s)", render_id, aspect)
+    _report_progress(progress_callback, "narration", 5, "Generating narration")
     audio_path, srt_path, video_path = job_dir / "narration.mp3", job_dir / "captions.srt", job_dir / "final.mp4"
     response = httpx.post(
         f"https://api.elevenlabs.io/v1/text-to-speech/{settings.elevenlabs_voice_id}",
@@ -97,6 +139,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     response.raise_for_status()
     audio_path.write_bytes(response.content)
     audio_duration = _duration(audio_path)
+    _report_progress(progress_callback, "storyboard", 20, "Preparing storyboard and captions")
     build_srt(script, srt_path, audio_duration)
     width, height = (1080, 1920) if aspect == "vertical" else (1920, 1080)
     scene_items = scenes or build_storyboard(script, title)
@@ -113,7 +156,9 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     manifest = {"title": title, "aspect": aspect, "visual_mode": visual_mode, "audio_duration_seconds": audio_duration, "music_volume": music_volume, "brand_logo_asset_id": brand_logo_asset_id, "music_asset_id": music_asset_id, "scenes": timeline}
     (job_dir / "storyboard.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     segment_paths = []
+    total_scenes = len(scene_items)
     for index, (scene, duration) in enumerate(zip(scene_items, durations)):
+        _report_progress(progress_callback, "scene_render", 25 + int(55 * index / max(1, total_scenes)), f"Rendering scene {index + 1} of {total_scenes}")
         segment_path = job_dir / f"segment-{index + 1:02}.mp4"
         transition = scene.get("transition", "fade")
         if transition not in {"fade", "cut"}:
@@ -165,6 +210,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
         _run(command)
         segment_paths.append(segment_path)
 
+    _report_progress(progress_callback, "concatenation", 82, "Combining scene segments")
     concat_file = job_dir / "scenes.txt"
     concat_file.write_text("".join(f"file '{p.name}'\n" for p in segment_paths), encoding="utf-8")
     visual_path = job_dir / "visuals.mp4"
@@ -176,6 +222,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
         music_path = job_dir / music_filename
         if not music_path.is_file():
             raise ValueError("Requested music file was not found in this render's media folder.")
+    _report_progress(progress_callback, "audio_mix", 90, "Mixing narration, music and captions")
     caption_filter = _caption_filter(srt_path, width)
     command = [settings.ffmpeg_binary, "-y", "-i", str(visual_path), "-i", str(audio_path)]
     if music_path:
@@ -185,5 +232,9 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     else:
         command += ["-vf", caption_filter, "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-map", "0:v", "-map", "1:a"]
     command += ["-t", f"{audio_duration:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(video_path)]
+    _report_progress(progress_callback, "validation", 97, "Validating final MP4 streams")
     _run(command)
+    metadata = _validate_render_output(video_path)
+    logger.info("Render %s completed (duration=%.2fs, bytes=%s)", render_id, metadata["duration_seconds"], metadata["size_bytes"])
+    _report_progress(progress_callback, "complete", 100, "Video render completed and validated")
     return f"/media/{render_id}/final.mp4"
