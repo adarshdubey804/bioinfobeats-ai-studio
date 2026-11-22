@@ -23,7 +23,7 @@ def assemble_approved_production(self, workflow_id: str, render_id: str):
         item.config={**config,"production_assembly":job,"video_render":{"id":render_id,"status":"rendering","title":title,"aspect":job["aspect"]}}
         db.commit()
         try:
-            video_url=render_video(render_id,title,script,job["aspect"],None,None)
+            video_url=render_video(render_id,title,script,job["aspect"],None,None,job.get("visual_mode","auto"))
             item=db.get(Workflow,workflow_id); config=item.config or {}
             item.config={**config,"video_render":{"id":render_id,"status":"ready_for_review","title":title,"aspect":job["aspect"],"storyboard":"auto","url":video_url}}
             item.config={**item.config,"production_assembly":{**job,"status":"generating_creatives","step":"thumbnails_and_social_copy","video_url":video_url}}

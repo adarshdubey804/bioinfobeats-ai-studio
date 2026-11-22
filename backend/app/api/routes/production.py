@@ -11,6 +11,7 @@ router = APIRouter()
 
 class AssemblyRequest(BaseModel):
     aspect: str = Field(default="vertical", pattern="^(vertical|landscape)$")
+    visual_mode: str = Field(default="auto", pattern="^(auto|static|ai)$")
 
 @router.post("/workflows/{workflow_id}/production/assemble", tags=["production"])
 def assemble_production(workflow_id: str, payload: AssemblyRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
@@ -23,7 +24,7 @@ def assemble_production(workflow_id: str, payload: AssemblyRequest, db: Session 
     if existing.get("status") in {"queued","rendering","generating_creatives"}:
         raise HTTPException(409,"Production assembly is already running.")
     render_id=str(uuid4())
-    job={"id":str(uuid4()),"render_id":render_id,"status":"queued","step":"queued","aspect":payload.aspect,"created_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}
+    job={"id":str(uuid4()),"render_id":render_id,"status":"queued","step":"queued","aspect":payload.aspect,"visual_mode":payload.visual_mode,"created_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}
     item.config={**config,"approved_title":item.topic,"production_assembly":job,"video_render":{"id":render_id,"status":"queued","title":item.topic,"aspect":payload.aspect}}
     db.commit()
     assemble_approved_production.delay(workflow_id,render_id)
