@@ -22,7 +22,7 @@ class SceneEdit(BaseModel):
     asset_id: str | None = None
 
 class StoryboardEdit(BaseModel):
-    scenes: list[SceneEdit] = Field(min_length=2,max_length=8)
+    scenes: list[SceneEdit] = Field(min_length=2,max_length=20)
     brand_logo_asset_id: str | None = None
     music_asset_id: str | None = None
 

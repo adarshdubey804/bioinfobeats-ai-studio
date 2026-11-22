@@ -23,7 +23,7 @@ class VideoRenderRequest(BaseModel):
     title: str = Field(min_length=3, max_length=120)
     script: str = Field(min_length=30, max_length=12000)
     aspect: str = Field(default="vertical", pattern="^(vertical|landscape)$")
-    scenes: list[SceneRequest] = Field(default_factory=list, max_length=8)
+    scenes: list[SceneRequest] = Field(default_factory=list, max_length=20)
     music_filename: str | None = Field(default=None, max_length=100)
     music_asset_id: str | None = None
     brand_logo_asset_id: str | None = None

@@ -84,3 +84,7 @@ Video render requests accept optional `voice_id`, `voice_stability` (0–1), `vo
 
 ## Voice library, previews and presets (Phase 30)
 The authenticated `GET /api/v1/audio/voices` endpoint lists voices available to the configured ElevenLabs account. `POST /api/v1/audio/voice-preview` accepts `text` (10–800 chars), `voice_id`, `stability` (0–1), `similarity` (0–1), and `speed` (0.7–1.2), then returns a private preview ID. Fetch the MP3 through authenticated `GET /api/v1/audio/voice-preview/{preview_id}`; the server verifies ownership and marks the response private/no-store. Preview files are stored beneath the user's `voice_previews` directory on the media volume. The dashboard can load the catalog, audition a short sample, and save/apply voice presets in browser local storage. Presets are browser-local and are not synced across devices. ElevenLabs credentials remain server-side.
+
+
+## Rendering scale update
+The render API and storyboard editor support up to 20 scenes per video. This is a practical throughput limit rather than an absolute architectural ceiling; very large scene counts increase image/video provider cost and FFmpeg render time. Provider quotas, file sizes, hardware and platform upload rules remain external constraints.

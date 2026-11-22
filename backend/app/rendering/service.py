@@ -155,8 +155,8 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     build_srt(script, srt_path, audio_duration)
     width, height = (1080, 1920) if aspect == "vertical" else (1920, 1080)
     scene_items = scenes or build_storyboard(script, title)
-    if len(scene_items) > 8:
-        raise ValueError("A maximum of 8 generated scenes is supported per render.")
+    if len(scene_items) > 20:
+        raise ValueError("A maximum of 20 generated scenes is supported per render.")
     if not 0 <= music_volume <= 0.3:
         raise ValueError("Music volume must be between 0 and 0.3.")
     durations = _scene_durations(scene_items, script, audio_duration)
