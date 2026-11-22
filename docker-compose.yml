@@ -28,6 +28,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     ports: ["8000:8000"]
+    volumes: ["media_data:/data/media"]
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -38,6 +39,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://bioinfobeats:local-dev-only@db:5432/bioinfobeats}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    volumes: ["media_data:/data/media"]
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -51,3 +53,4 @@ services:
     depends_on: [api]
 volumes:
   postgres_data:
+  media_data:

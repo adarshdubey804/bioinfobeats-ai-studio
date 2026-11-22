@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     tavily_api_key: str = ''
     youtube_api_key: str = ''
     research_timeout_seconds: int = 30
+    elevenlabs_api_key: str = ''
+    elevenlabs_voice_id: str = ''
+    elevenlabs_model_id: str = 'eleven_multilingual_v2'
+    render_timeout_seconds: int = 180
+    media_storage_dir: str = '/data/media'
+    ffmpeg_binary: str = 'ffmpeg'
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(',') if origin.strip()]
