@@ -1,49 +1,39 @@
 # BioinfoBeats AI Studio
 
-An AI-assisted social content production studio for research, competitor intelligence, video scripting, editing plans, creative briefs and human-approved publishing.
+AI-assisted content production studio with six-agent orchestration, evidence collection and human-reviewed publishing.
 
-## Current implementation
+## Platform
+- Next.js + TypeScript dashboard
+- FastAPI, PostgreSQL, SQLAlchemy, Alembic
+- Redis + Celery
+- JWT registration/login
+- Six-stage AI pipeline: topic research, fact checking, competitor research, video generation brief, editing plan, creative/publishing package
+- Research provider adapters: Tavily web search and YouTube Data API
+- Publishing is not automatic; human approval remains mandatory.
 
-- Next.js App Router + TypeScript dashboard
-- FastAPI API, PostgreSQL, SQLAlchemy 2 and Alembic
-- Redis + Celery background worker
-- JWT registration/login and password hashing
-- Six-agent sequential orchestration pipeline using an OpenAI-compatible chat-completions endpoint
-- Workflow persistence with per-agent JSON output and error status
-- Human approval boundary: the pipeline creates drafts and production instructions; it does not publish, schedule, render or upload media.
+## Run
+Copy .env.example to .env, configure credentials, then run docker compose up --build.
+Dashboard: http://localhost:3000. API docs: http://localhost:8000/docs.
 
-## Six agents
+## Provider keys
+- LLM_API_KEY: OpenAI-compatible chat completions API.
+- TAVILY_API_KEY: Tavily search API for web evidence retrieval.
+- YOUTUBE_API_KEY: Google Cloud YouTube Data API v3 key.
 
-1. Topic Researcher — research brief, content angles and source queries.
-2. Fact-check Researcher — claim review, caveats and verification needs.
-3. Competitor Researcher — competitor research queries, hypotheses clearly labelled as such, and content gaps. No fabricated browsing.
-4. AI Video Generator — script, scenes, narration and avatar-generation brief. Provider rendering is a later integration.
-5. Video Editor — edit decision list, captions, transitions and export instructions. Media rendering is a later integration.
-6. Creative & Publishing — poster brief, channel copy and publishing checklist. Publishing is never automatic.
+Never commit API keys. Set production secrets in your deployment environment.
 
-## Run locally
+## Research endpoints
+POST /api/v1/research/web
+POST /api/v1/research/youtube
 
-1. Copy .env.example to .env.
-2. Set a strong SECRET_KEY, database password and LLM_API_KEY.
-3. Run docker compose up --build.
-4. Open http://localhost:3000 and API docs at http://localhost:8000/docs.
+Body: {"query":"BLAST bioinformatics tutorial","max_results":5}
+Responses preserve source titles, URLs, snippets and metadata from providers. Search results are evidence candidates, not endorsements or verified facts; the fact-check stage must inspect source material.
 
-API example: POST /api/v1/workflows with JSON containing topic and config fields such as brand, audience, platforms, format, target_duration_seconds and competitors.
+## Workflow
+POST /api/v1/workflows with topic and config, then POST /api/v1/workflows/{id}/queue. Poll GET /api/v1/workflows/{id}. Completed agent output is marked ready_for_review. Failed provider calls set failed status with a diagnostic.
 
-Then call POST /api/v1/workflows/{id}/queue. Poll GET /api/v1/workflows/{id}. When complete, status is ready_for_review and agent_outputs contains each agent's structured result. If the provider key is missing or a call fails, status becomes failed and pipeline_error explains why.
+## Test
+cd backend && pip install -r requirements.txt && pytest
 
-## Authentication
-
-- POST /api/v1/auth/register
-- POST /api/v1/auth/login
-- GET /api/v1/auth/me with Authorization: Bearer <token>
-
-## Tests
-
-From backend: pip install -r requirements.txt, then pytest.
-
-## Next integrations
-
-External web search for verified research and competitor evidence; AI avatar/video provider; FFmpeg rendering; poster image generation; Buffer account authorization and publishing; analytics and approval UI.
-
-Never commit credentials. Configure production CORS, TLS, secret management, rate limiting, backups and access controls before deployment.
+## Roadmap
+Next: enrich competitor research with channel/video statistics, connect video/avatar provider adapters, FFmpeg rendering, image creative generation and approved publishing integration.

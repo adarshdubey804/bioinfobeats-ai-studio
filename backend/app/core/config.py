@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     llm_base_url: str = 'https://api.openai.com/v1'
     llm_model: str = 'gpt-4o-mini'
     llm_timeout_seconds: int = 120
+    tavily_api_key: str = ''
+    youtube_api_key: str = ''
+    research_timeout_seconds: int = 30
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(',') if origin.strip()]
