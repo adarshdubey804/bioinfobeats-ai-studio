@@ -114,3 +114,7 @@ Authenticated users can request cancellation with `POST /api/v1/workflows/{workf
 
 ### Safe stale-job recovery
 Queue endpoints reject a workflow that already has an active background job. A stale job can be closed through `POST /api/v1/workflows/{workflow_id}/jobs/{job_id}/recover` with `{"worker_stopped":true}` only after an operator has verified that the old worker process is stopped. The API checks the stale threshold, requests Celery revocation, closes the old run and permits a new queue. This is deliberately a manual safety gate: revocation alone does not terminate an already-running task, and blindly replaying a task could duplicate provider charges or production assets.
+
+
+### API protection and media quotas
+Authentication registration is limited to 5 requests per IP per minute; login to 10 per minute; media uploads to 20 per IP per minute. Limits use Redis shared across API instances and return HTTP 503 if Redis is unavailable (fail-closed). Each account has a 1 GiB media-library quota, reserved atomically when an upload is accepted and released when an asset is deleted. Individual uploads remain capped at 50 MiB. These are baseline controls; production deployments should add edge/WAF limits and monitor Redis availability.

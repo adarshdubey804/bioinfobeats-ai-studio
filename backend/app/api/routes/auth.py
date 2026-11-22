@@ -8,14 +8,15 @@ from app.models.user import User
 from app.schemas.auth import RegisterRequest,LoginRequest,TokenResponse
 from app.core.security import hash_password,verify_password,create_access_token,ALGORITHM
 from app.core.config import settings
+from app.core.rate_limit import rate_limit
 router=APIRouter();bearer=HTTPBearer(auto_error=False)
-@router.post('/auth/register',status_code=201,tags=['auth'])
+@router.post('/auth/register',status_code=201,tags=['auth'],dependencies=[Depends(rate_limit('register', 5, 60))])
 def register(payload:RegisterRequest,db:Session=Depends(get_db)):
  email=str(payload.email).lower()
  if db.query(User).filter(User.email==email).first():raise HTTPException(409,'Email already registered')
  user=User(email=email,password_hash=hash_password(payload.password));db.add(user);db.commit();db.refresh(user)
  return {'id':user.id,'email':user.email,'created_at':user.created_at.isoformat()}
-@router.post('/auth/login',response_model=TokenResponse,tags=['auth'])
+@router.post('/auth/login',response_model=TokenResponse,tags=['auth'],dependencies=[Depends(rate_limit('login', 10, 60))])
 def login(payload:LoginRequest,db:Session=Depends(get_db)):
  user=db.query(User).filter(User.email==str(payload.email).lower()).first()
  if not user or not user.is_active or not verify_password(payload.password,user.password_hash):raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail='Invalid email or password',headers={'WWW-Authenticate':'Bearer'})

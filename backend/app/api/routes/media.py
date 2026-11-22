@@ -3,16 +3,18 @@ import uuid
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.media_asset import MediaAsset
 from app.models.user import User
+from app.core.rate_limit import rate_limit
 
 router = APIRouter()
 MAX_BYTES = 50 * 1024 * 1024
+USER_QUOTA_BYTES = 1024 * 1024 * 1024
 ALLOWED = {
     "image": {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"},
     "audio": {"audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/ogg": ".ogg"},
@@ -60,7 +62,7 @@ def list_assets(q: str = Query(default="", max_length=100), media_type: str = Qu
     return [_item(row) for row in rows]
 
 
-@router.post("/media/library", tags=["media-library"])
+@router.post("/media/library", tags=["media-library"], dependencies=[Depends(rate_limit("media-upload", 20, 60))])
 async def upload_asset(file: UploadFile = File(...), media_type: str = Query(..., pattern="^(image|audio|video)$"),
                       db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     content_type = (file.content_type or "").lower()
@@ -77,6 +79,9 @@ async def upload_asset(file: UploadFile = File(...), media_type: str = Query(...
         raise HTTPException(413, "Maximum upload size is 50 MB.")
     if not _matches_signature(content, media_type, content_type):
         raise HTTPException(415, "File contents do not match the declared media type.")
+    reserved = db.execute(update(User).where(User.id == user.id, User.media_bytes_used + len(content) <= USER_QUOTA_BYTES).values(media_bytes_used=User.media_bytes_used + len(content)))
+    if reserved.rowcount != 1:
+        raise HTTPException(413, "Your media library has reached its 1 GB storage quota.")
     storage_name = f"{uuid.uuid4().hex}{extension}"
     folder = (Path(settings.media_storage_dir).resolve() / "library" / str(user.id)).resolve()
     root = Path(settings.media_storage_dir).resolve()
@@ -121,6 +126,7 @@ def delete_asset(asset_id: str, db: Session = Depends(get_db), user: User = Depe
     if folder not in path.parents:
         raise HTTPException(400, "Invalid media storage path.")
     path.unlink(missing_ok=True)
+    db.execute(update(User).where(User.id == user.id).values(media_bytes_used=User.media_bytes_used - asset.size_bytes))
     db.delete(asset)
     db.commit()
     return {"deleted": True, "id": asset_id}
