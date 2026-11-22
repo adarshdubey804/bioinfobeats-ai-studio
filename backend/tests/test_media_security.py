@@ -21,7 +21,7 @@ def test_library_asset_urls_require_authenticated_api_route():
 
 def test_static_media_mount_exposes_only_public_directory():
     media_mount = next(route for route in app.routes if getattr(route, "name", None) == "media")
-    assert Path(media_mount.directory).resolve() == (Path(settings.media_storage_dir).resolve() / "public").resolve()
+    assert Path(media_mount.app.directory).resolve() == (Path(settings.media_storage_dir).resolve() / "public").resolve()
     assert Path(media_mount.directory).name == "public"
 
 
