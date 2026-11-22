@@ -2,13 +2,13 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 type Workflow = { id:string; topic:string; status:string; config:Record<string, any>; agent_outputs:any; pipeline_error?:string; created_at:string };
 type Channel = { id:string; name:string; service:string };
 const agents = ['Topic Researcher','Fact-check Researcher','Competitor Researcher','AI Video Generator','Video Editor','Creative & Publishing'];
 
 async function request(path:string, init:RequestInit={}) {
-  const response = await fetch(API + path, { ...init, headers:{'Content-Type':'application/json', ...(init.headers||{})} });
+  const response = await fetch(API + path, { ...init, headers:{'Content-Type':'application/json', ...(typeof window !== 'undefined' && localStorage.getItem('bb_access_token') ? {Authorization:'Bearer '+localStorage.getItem('bb_access_token')} : {}), ...(init.headers||{})} });
   const body = await response.json().catch(()=>({detail:response.statusText}));
   if (!response.ok) throw new Error(body.detail || 'Request failed');
   return body;
@@ -16,6 +16,11 @@ async function request(path:string, init:RequestInit={}) {
 
 export default function Home() {
   const [workflows,setWorkflows]=useState<Workflow[]>([]);
+  const [token,setToken]=useState('');
+  const [email,setEmail]=useState('');
+  const [password,setPassword]=useState('');
+  const [authMode,setAuthMode]=useState<'login'|'register'>('login');
+  const [userEmail,setUserEmail]=useState('');
   const [activeId,setActiveId]=useState('');
   const [topic,setTopic]=useState('');
   const [title,setTitle]=useState('');
@@ -31,10 +36,13 @@ export default function Home() {
   const [notice,setNotice]=useState('');
   const [stats,setStats]=useState<any[]>([]);
   const active=workflows.find(w=>w.id===activeId);
-  const load=useCallback(async()=>{try{const rows=await Promise.all([]); void rows; if(activeId){const w=await request('/workflows/'+activeId);setWorkflows(old=>[w,...old.filter(x=>x.id!==w.id)]);} }catch(e){setError((e as Error).message)}},[activeId]);
+  const load=useCallback(async()=>{try{const rows=await request('/workflows');setWorkflows(rows);if(rows.length&&!activeId)setActiveId(rows[0].id);}catch(e){setError((e as Error).message)}},[activeId]);
   const refreshActive=useCallback(async()=>{if(!activeId)return;try{const w=await request('/workflows/'+activeId);setWorkflows(old=>[w,...old.filter(x=>x.id!==w.id)]);}catch(e){setError((e as Error).message)}},[activeId]);
+  useEffect(()=>{const saved=localStorage.getItem('bb_access_token');if(saved){setToken(saved);request('/auth/me').then((u)=>{setUserEmail(u.email);return load()}).catch(()=>{localStorage.removeItem('bb_access_token');setToken('')});}},[]);
   useEffect(()=>{if(activeId){refreshActive();const t=setInterval(refreshActive,8000);return()=>clearInterval(t)}},[activeId,refreshActive]);
   const run=async(label:string,fn:()=>Promise<void>)=>{setBusy(label);setError('');setNotice('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy('')}};
+  async function authenticate(e:FormEvent){e.preventDefault();await run('auth',async()=>{if(authMode==='register')await request('/auth/register',{method:'POST',body:JSON.stringify({email,password})});const data=await request('/auth/login',{method:'POST',body:JSON.stringify({email,password})});localStorage.setItem('bb_access_token',data.access_token);setToken(data.access_token);setUserEmail(email);setPassword('');await load();setNotice('Signed in successfully.');});}
+  function logout(){localStorage.removeItem('bb_access_token');setToken('');setUserEmail('');setWorkflows([]);setActiveId('');}
   async function create(e:FormEvent){e.preventDefault();await run('create',async()=>{const w=await request('/workflows',{method:'POST',body:JSON.stringify({topic,config:{channel:'BioinfoBeats'}})});setWorkflows(old=>[w,...old]);setActiveId(w.id);setTopic('');setNotice('Workflow created. Queue the six-agent production pipeline when ready.');});}
   async function queue(){if(!active)return;await run('queue',async()=>{await request('/workflows/'+active.id+'/queue',{method:'POST'});await refreshActive();setNotice('Six-agent pipeline queued.');});}
   async function generateCreative(){if(!active)return;await run('creative',async()=>{await request('/workflows/'+active.id+'/creative',{method:'POST',body:JSON.stringify({title:title||active.topic,script,platforms:['YouTube','Instagram','LinkedIn']})});setNotice('Creative package queued. Refresh this workflow to see its result.');await refreshActive();});}
@@ -43,12 +51,13 @@ export default function Home() {
   async function publish(){if(!active)return;await run('publish',async()=>{await request('/workflows/'+active.id+'/publishing/approve',{method:'POST',body:JSON.stringify({channel_id:channelId,text:publishText,approved:true,publish_now:publishNow,...(!publishNow?{scheduled_at:new Date(scheduledAt).toISOString()}: {})})});setNotice('Approved post submitted to Buffer.');await refreshActive();});}
   async function fetchStats(){await run('stats',async()=>{const ids=videoIds.split(/[\s,]+/).filter(Boolean);const data=await request('/analytics/youtube/videos',{method:'POST',body:JSON.stringify({video_ids:ids})});setStats(data.videos||[]);});}
   const outputs=useMemo(()=>active?.agent_outputs||[],[active]);
+  if(!token)return <main className="authShell"><section className="authCard"><a className="brand" href="#"><span className="brandMark">B</span><span>BioinfoBeats<small>AI STUDIO</small></span></a><p className="eyebrow">SECURE CREATOR WORKSPACE</p><h1>{authMode==='login'?'Welcome back.':'Create your workspace.'}</h1><p className="sub">Sign in to manage your research, production workflows and publishing approvals.</p>{error&&<div className="alert error">{error}</div>}<form onSubmit={authenticate}><label>Email address</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required/><label>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={authMode==='register'?12:1} required/><button className="primaryBtn wide" disabled={!!busy}>{busy==='auth'?'Please wait…':authMode==='login'?'Sign in':'Create account'}</button></form><button className="authSwitch" onClick={()=>setAuthMode(authMode==='login'?'register':'login')}>{authMode==='login'?'New here? Create an account':'Already registered? Sign in'}</button><small className="micro">Passwords must be at least 12 characters when registering.</small></section></main>;
   return <main className="appShell">
     <aside className="sidebar"><a className="brand" href="#"><span className="brandMark">B</span><span>BioinfoBeats<small>AI STUDIO</small></span></a>
       <div className="sideLabel">WORKSPACE</div><a className="navItem active" href="#overview">◫ <span>Overview</span></a><a className="navItem" href="#production">✳ <span>Production</span></a><a className="navItem" href="#publishing">↗ <span>Publishing</span></a><a className="navItem" href="#analytics">▥ <span>Analytics</span></a>
       <div className="sideBottom"><span className="onlineDot"/> API WORKSPACE<br/><small>Connect provider keys in server .env</small></div>
     </aside>
-    <section className="mainArea"><header className="topbar"><div><span className="crumb">WORKSPACE /</span> OVERVIEW</div><div className="topRight"><span className="liveDot"/> SYSTEM READY <button className="ghost" onClick={()=>activeId?refreshActive():setNotice('Select or create a workflow to begin.')}>↻ Refresh</button></div></header>
+    <section className="mainArea"><header className="topbar"><div><span className="crumb">WORKSPACE /</span> OVERVIEW</div><div className="topRight"><span className="liveDot"/> {userEmail||'SIGNED IN'} <button className="ghost" onClick={()=>activeId?refreshActive():setNotice('Select or create a workflow to begin.')}>↻ Refresh</button><button className="ghost" onClick={logout}>Sign out</button></div></header>
       <div className="content">
         <section id="overview" className="welcome"><div><p className="eyebrow">CREATOR OPERATING SYSTEM</p><h1>Make knowledge<br/><em>move the world.</em></h1><p className="sub">Research, produce, review and publish BioinfoBeats content from one workspace.</p></div><div className="heroOrb"><div className="orbCore">B<span>•</span></div><i/><b/></div></section>
         {error&&<div className="alert error">{error}</div>}{notice&&<div className="alert success">{notice}</div>}
