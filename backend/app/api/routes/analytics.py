@@ -9,7 +9,6 @@ from app.models.user import User
 from app.models.google_oauth import GoogleOAuthConnection
 from app.models.analytics_snapshot import AnalyticsSnapshot
 from app.analytics.youtube import public_video_stats, owner_channel_report, AnalyticsConfigurationError
-from app.analytics.collection import collect_connection_snapshot
 from app.worker.analytics_tasks import collect_user_youtube_analytics
 from app.agents.pipeline import _call_model
 
