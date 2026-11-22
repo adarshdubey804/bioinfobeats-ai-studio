@@ -1,7 +1,9 @@
 from pathlib import Path
 from uuid import uuid4
+import re
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from app.api.deps import get_current_user
 from app.core.config import settings
@@ -79,4 +81,16 @@ def create_voice_preview(payload: VoicePreviewRequest, user: User = Depends(get_
         raise HTTPException(400, "Invalid preview storage path.")
     folder.mkdir(parents=True, exist_ok=True)
     (folder / filename).write_bytes(response.content)
-    return {"url": f"/media/voice_previews/{user.id}/{filename}", "size_bytes": len(response.content)}
+    return {"preview_id": filename.removesuffix(".mp3"), "size_bytes": len(response.content)}
+
+
+@router.get("/voice-preview/{preview_id}")
+def get_voice_preview(preview_id: str, user: User = Depends(get_current_user)):
+    if not re.fullmatch(r"[a-f0-9]{32}", preview_id):
+        raise HTTPException(404, "Voice preview not found.")
+    root = Path(settings.media_storage_dir).resolve()
+    folder = (root / "voice_previews" / str(user.id)).resolve()
+    path = (folder / (preview_id + ".mp3")).resolve()
+    if root not in folder.parents or folder not in path.parents or not path.is_file():
+        raise HTTPException(404, "Voice preview not found.")
+    return FileResponse(path, media_type="audio/mpeg", filename="bioinfobeats-voice-preview.mp3", headers={"Cache-Control": "private, no-store"})
