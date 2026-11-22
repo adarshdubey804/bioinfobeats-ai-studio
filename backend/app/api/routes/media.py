@@ -23,8 +23,8 @@ def _matches_signature(content: bytes, media_type: str, content_type: str) -> bo
     """Reject common MIME-spoofed uploads before persisting them."""
     if media_type == "image":
         return (
-            (content_type == "image/jpeg" and content.startswith(b"\\xff\\xd8\\xff"))
-            or (content_type == "image/png" and content.startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
+            (content_type == "image/jpeg" and content.startswith(b"\xff\xd8\xff"))
+            or (content_type == "image/png" and content.startswith(b"\x89PNG\r\n\x1a\n"))
             or (content_type == "image/webp" and len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP")
         )
     if media_type == "audio":
@@ -36,7 +36,7 @@ def _matches_signature(content: bytes, media_type: str, content_type: str) -> bo
     if media_type == "video":
         return (
             (content_type == "video/mp4" and len(content) >= 12 and content[4:8] == b"ftyp")
-            or (content_type == "video/webm" and content.startswith(b"\\x1a\\x45\\xdf\\xa3"))
+            or (content_type == "video/webm" and content.startswith(b"\x1a\x45\xdf\xa3"))
         )
     return False
 
