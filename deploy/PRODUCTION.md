@@ -8,10 +8,10 @@
 
 ## Configure
 1. Copy `.env.example` to `.env`; never commit it.
-2. Set strong unique values for `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `SECRET_KEY`, and `OAUTH_TOKEN_ENCRYPTION_KEY`.
+2. Set strong unique values for `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `SECRET_KEY`, and `OAUTH_TOKEN_ENCRYPTION_KEY`. Do not retain the sample values.
 3. Set `APP_DOMAIN` to the public DNS name.
 4. Set `DATABASE_URL=postgresql+psycopg://USER:PASSWORD@db:5432/DBNAME`.
-5. Set `REDIS_URL=redis://:REDIS_PASSWORD@redis:6379/0`.
+5. Set `REDIS_URL=redis://:REDIS_PASSWORD@redis:6379/0` (the production Redis service requires authentication).
 6. Set `CORS_ORIGINS=https://APP_DOMAIN`.
 7. Set `GOOGLE_OAUTH_REDIRECT_URI=https://APP_DOMAIN/api/v1/oauth/google/callback` and `GOOGLE_OAUTH_FRONTEND_URL=https://APP_DOMAIN`.
 8. Review all provider keys and OAuth callback URLs before accepting users.
