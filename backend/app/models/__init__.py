@@ -7,3 +7,5 @@ from app.models.research_script import ResearchScript
 from app.models.script_revision import ScriptRevision
 
 from app.models.media_asset import MediaAsset
+
+from app.models.job_run import JobRun
