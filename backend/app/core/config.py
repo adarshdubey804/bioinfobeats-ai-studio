@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     tavily_api_key: str = ''
     youtube_api_key: str = ''
     youtube_oauth_access_token: str = ''
+    google_oauth_client_id: str = ''
+    google_oauth_client_secret: str = ''
+    google_oauth_redirect_uri: str = 'http://localhost:8000/api/v1/oauth/google/callback'
+    google_oauth_frontend_url: str = 'http://localhost:3000'
+    oauth_token_encryption_key: str = ''
     research_timeout_seconds: int = 30
     elevenlabs_api_key: str = ''
     elevenlabs_voice_id: str = ''

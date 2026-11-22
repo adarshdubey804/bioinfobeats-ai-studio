@@ -1,8 +1,12 @@
 from datetime import date
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 import httpx
 from app.api.deps import get_current_user
+from app.db.session import get_db
+from app.models.user import User
+from app.models.google_oauth import GoogleOAuthConnection
 from app.analytics.youtube import public_video_stats, owner_channel_report, AnalyticsConfigurationError
 from app.agents.pipeline import _call_model
 
@@ -25,9 +29,11 @@ def youtube_video_stats(payload: VideoStatsRequest):
     except httpx.HTTPError as exc: raise HTTPException(502, f"YouTube Data API error: {exc}")
 
 @router.post("/analytics/youtube/channel", tags=["analytics"])
-def youtube_channel_report(payload: ChannelReportRequest):
-    try: return owner_channel_report(payload.start_date, payload.end_date)
-    except AnalyticsConfigurationError as exc: raise HTTPException(503, str(exc))
+def youtube_channel_report(payload: ChannelReportRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    connection = db.query(GoogleOAuthConnection).filter_by(user_id=user.id).first()
+    if connection is None:
+        raise HTTPException(409, "Connect your YouTube channel in Settings before requesting private analytics.")
+    try: return owner_channel_report(payload.start_date, payload.end_date, connection)
     except ValueError as exc: raise HTTPException(400, str(exc))
     except httpx.HTTPError as exc: raise HTTPException(502, f"YouTube Analytics API error: {exc}")
 
