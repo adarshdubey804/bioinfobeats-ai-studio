@@ -34,7 +34,11 @@ export default function Home() {
   const [busy,setBusy]=useState('');
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
-  const [stats,setStats]=useState<any[]>([]);\n  const [analyticsHistory,setAnalyticsHistory]=useState<any[]>([]);\n  const [ideas,setIdeas]=useState<any[]>([]);\n  const [ideaNiche,setIdeaNiche]=useState('Bioinformatics education');\n  const [ideaAudience,setIdeaAudience]=useState('Bioinformatics learners and life-science researchers');
+  const [stats,setStats]=useState<any[]>([]);
+  const [analyticsHistory,setAnalyticsHistory]=useState<any[]>([]);
+  const [ideas,setIdeas]=useState<any[]>([]);
+  const [ideaNiche,setIdeaNiche]=useState('Bioinformatics education');
+  const [ideaAudience,setIdeaAudience]=useState('Bioinformatics learners and life-science researchers');
   const [googleConnected,setGoogleConnected]=useState(false);
   const [reportStart,setReportStart]=useState('2026-11-01');
   const [reportEnd,setReportEnd]=useState('2026-11-22');
@@ -54,7 +58,11 @@ export default function Home() {
   async function loadChannels(){await run('channels',async()=>{const data=await request('/publishing/channels');const orgs=data?.account?.organizations||[];const list=orgs.flatMap((o:any)=>o.channels||[]);setChannels(list);if(list[0])setChannelId(list[0].id);});}
   async function publish(){if(!active)return;await run('publish',async()=>{await request('/workflows/'+active.id+'/publishing/approve',{method:'POST',body:JSON.stringify({channel_id:channelId,text:publishText,approved:true,publish_now:publishNow,...(!publishNow?{scheduled_at:new Date(scheduledAt).toISOString()}: {})})});setNotice('Approved post submitted to Buffer.');await refreshActive();});}
   async function fetchStats(){await run('stats',async()=>{const ids=videoIds.split(/[\s,]+/).filter(Boolean);const data=await request('/analytics/youtube/videos',{method:'POST',body:JSON.stringify({video_ids:ids})});setStats(data.videos||[]);});}
-  async function generateIdeas(){await run('ideas',async()=>{const data=await request('/content/ideas/generate',{method:'POST',body:JSON.stringify({niche:ideaNiche,audience:ideaAudience,count:8,duration_minutes:5})});setIdeas(data.ideas||[]);setNotice('Generated and saved '+(data.count||0)+' content ideas.');});}\n  async function loadIdeas(){await run('ideas-load',async()=>{const data=await request('/content/ideas');setIdeas(data);});}\n  async function promoteIdea(id:string){await run('idea-workflow',async()=>{const data=await request('/content/ideas/'+id+'/workflow',{method:'POST'});await load();setActiveId(data.workflow_id);setNotice('Content idea converted into a production workflow.');});}\n  async function updateIdeaStatus(id:string,status:string,scheduled_date?:string){await run('idea-status',async()=>{await request('/content/ideas/'+id,{method:'PATCH',body:JSON.stringify({status,scheduled_date:scheduled_date||null})});await loadIdeas();});}\n  async function connectGoogle(){await run('google',async()=>{const data=await request('/oauth/google/start');window.location.href=data.authorization_url;});}
+  async function generateIdeas(){await run('ideas',async()=>{const data=await request('/content/ideas/generate',{method:'POST',body:JSON.stringify({niche:ideaNiche,audience:ideaAudience,count:8,duration_minutes:5})});setIdeas(data.ideas||[]);setNotice('Generated and saved '+(data.count||0)+' content ideas.');});}
+  async function loadIdeas(){await run('ideas-load',async()=>{const data=await request('/content/ideas');setIdeas(data);});}
+  async function promoteIdea(id:string){await run('idea-workflow',async()=>{const data=await request('/content/ideas/'+id+'/workflow',{method:'POST'});await load();setActiveId(data.workflow_id);setNotice('Content idea converted into a production workflow.');});}
+  async function updateIdeaStatus(id:string,status:string,scheduled_date?:string){await run('idea-status',async()=>{await request('/content/ideas/'+id,{method:'PATCH',body:JSON.stringify({status,scheduled_date:scheduled_date||null})});await loadIdeas();});}
+  async function connectGoogle(){await run('google',async()=>{const data=await request('/oauth/google/start');window.location.href=data.authorization_url;});}
   async function fetchOwnerReport(){await run('owner-report',async()=>{const data=await request('/analytics/youtube/channel',{method:'POST',body:JSON.stringify({start_date:reportStart,end_date:reportEnd})});setOwnerReport(data);});}
   async function disconnectGoogle(){await run('google-disconnect',async()=>{await request('/oauth/google',{method:'DELETE'});setGoogleConnected(false);setOwnerReport(null);setNotice('Google connection revoked.');});}
   const outputs=useMemo(()=>active?.agent_outputs||[],[active]);
