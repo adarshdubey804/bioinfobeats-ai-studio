@@ -32,6 +32,29 @@ jobs:
         run: cp .env.example .env
       - name: Validate local Compose configuration
         run: docker compose config --quiet
+      - name: Validate production preflight script
+        run: |
+          bash -n deploy/preflight.sh
+          cat > /tmp/bioinfobeats-production.env <<'EOF'
+          APP_DOMAIN=studio.example.org
+          POSTGRES_DB=bioinfobeats
+          POSTGRES_USER=bioinfobeats
+          POSTGRES_PASSWORD=ci-postgres-password-long-enough
+          REDIS_PASSWORD=ci-redis-password-long-enough
+          DATABASE_URL=postgresql+psycopg://bioinfobeats:ci-postgres-password-long-enough@db:5432/bioinfobeats
+          REDIS_URL=redis://:ci-redis-password-long-enough@redis:6379/0
+          SECRET_KEY=ci-secret-key-that-is-long-enough-for-production-validation
+          OAUTH_TOKEN_ENCRYPTION_KEY=ci-oauth-encryption-secret-long-enough-for-preflight
+          CORS_ORIGINS=https://studio.example.org
+          GOOGLE_OAUTH_REDIRECT_URI=https://studio.example.org/api/v1/oauth/google/callback
+          GOOGLE_OAUTH_FRONTEND_URL=https://studio.example.org
+          LLM_API_KEY=ci-test-key
+          TAVILY_API_KEY=ci-test-key
+          ELEVENLABS_API_KEY=ci-test-key
+          ELEVENLABS_VOICE_ID=ci-test-voice
+          OPENAI_API_KEY=ci-test-key
+          EOF
+          bash deploy/preflight.sh /tmp/bioinfobeats-production.env
       - name: Validate production Compose configuration
         env:
           APP_DOMAIN: studio.example.com
