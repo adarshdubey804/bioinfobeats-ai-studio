@@ -68,7 +68,7 @@ def render_workflow_video(self, workflow_id: str, render_id: str):
         db.commit()
         try:
             scene_paths, music_path, logo_path = _prepare_assets(db, item.owner_id, render_id, request)
-            url = render_video(render_id, request["title"], request["script"], request["aspect"], request.get("scenes"), music_path or request.get("music_filename"), request.get("visual_mode", "auto"), request.get("music_volume", 0.12), scene_paths, logo_path)
+            url = render_video(render_id, request["title"], request["script"], request["aspect"], request.get("scenes"), music_path or request.get("music_filename"), request.get("visual_mode", "auto"), request.get("music_volume", 0.12), scene_paths, logo_path, request.get("brand_logo_asset_id"), request.get("music_asset_id"))
             item = db.get(Workflow, workflow_id)
             item.config = {**(item.config or {}), "video_render": {**(item.config or {})["video_render"], "status": "ready_for_review", "url": url}}
             db.commit()

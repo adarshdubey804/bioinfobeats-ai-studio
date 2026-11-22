@@ -78,7 +78,7 @@ def _caption_filter(srt_path: Path, width: int) -> str:
     font_size = 24 if width < 1500 else 32
     return f"subtitles='{safe}':force_style='FontName=DejaVu Sans,FontSize={font_size},PrimaryColour=&H00FFFFFF,OutlineColour=&H00101820,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=90'"
 
-def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto", music_volume: float = 0.12, scene_asset_paths: dict[int, str] | None = None, brand_logo_path: str | None = None) -> str:
+def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto", music_volume: float = 0.12, scene_asset_paths: dict[int, str] | None = None, brand_logo_path: str | None = None, brand_logo_asset_id: str | None = None, music_asset_id: str | None = None) -> str:
     if not settings.elevenlabs_api_key or not settings.elevenlabs_voice_id:
         raise RenderConfigurationError("Configure ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to render narration.")
     render_id = _safe_id(render_id)
@@ -110,7 +110,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     for index, (scene, scene_duration) in enumerate(zip(scene_items, durations)):
         timeline.append({**scene, "index": index, "start_seconds": round(cursor, 3), "end_seconds": round(cursor + scene_duration, 3), "duration_seconds": round(scene_duration, 3)})
         cursor += scene_duration
-    manifest = {"title": title, "aspect": aspect, "visual_mode": visual_mode, "audio_duration_seconds": audio_duration, "music_volume": music_volume, "scenes": timeline}
+    manifest = {"title": title, "aspect": aspect, "visual_mode": visual_mode, "audio_duration_seconds": audio_duration, "music_volume": music_volume, "brand_logo_asset_id": brand_logo_asset_id, "music_asset_id": music_asset_id, "scenes": timeline}
     (job_dir / "storyboard.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     segment_paths = []
     for index, (scene, duration) in enumerate(zip(scene_items, durations)):
