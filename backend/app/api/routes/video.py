@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.workflow import Workflow
-from app.worker.tasks import render_workflow_video
+from app.worker.video_tasks import render_workflow_video
 
 router = APIRouter()
 
