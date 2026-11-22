@@ -35,3 +35,22 @@ def test_progress_callback_receives_stage_updates():
     events = []
     _report_progress(events.append, "audio_mix", 90, "Mixing audio")
     assert events == [{"stage": "audio_mix", "percent": 90, "message": "Mixing audio"}]
+
+
+
+def test_pronunciation_dictionary_replaces_whole_terms_case_insensitively():
+    from app.rendering.service import apply_pronunciation_dictionary
+    spoken = apply_pronunciation_dictionary("BLAST aligns FASTA sequences; blast is fast.", "BLAST=blast\nFASTA=fast-a")
+    assert spoken == "blast aligns fast-a sequences; blast is fast."
+
+
+def test_pronunciation_dictionary_does_not_replace_inside_other_words():
+    from app.rendering.service import apply_pronunciation_dictionary
+    assert apply_pronunciation_dictionary("blast blastn", "blast=blɑːst") == "blɑːst blastn"
+
+
+def test_pronunciation_dictionary_rejects_malformed_entries():
+    import pytest
+    from app.rendering.service import apply_pronunciation_dictionary
+    with pytest.raises(ValueError, match="TERM=PRONUNCIATION"):
+        apply_pronunciation_dictionary("BLAST", "BLAST")

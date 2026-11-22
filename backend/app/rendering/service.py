@@ -110,6 +110,22 @@ def _scene_durations(scenes: list[dict], script: str, duration: float) -> list[f
     result[-1] += duration - sum(result)
     return result
 
+def apply_pronunciation_dictionary(script: str, dictionary: str) -> str:
+    """Apply case-insensitive whole-term substitutions for spoken audio only."""
+    spoken = script
+    entries = [line.strip() for line in dictionary.splitlines() if line.strip()]
+    if len(entries) > 50:
+        raise ValueError("Pronunciation dictionary supports at most 50 entries.")
+    for line in entries:
+        if "=" not in line:
+            raise ValueError("Pronunciation entries must use TERM=PRONUNCIATION format.")
+        term, pronunciation = (part.strip() for part in line.split("=", 1))
+        if not term or not pronunciation or len(term) > 80 or len(pronunciation) > 120:
+            raise ValueError("Pronunciation terms must be 1–80 characters and pronunciations 1–120 characters.")
+        spoken = re.sub(r"(?<!\\w)" + re.escape(term) + r"(?!\\w)", lambda _: pronunciation, spoken, flags=re.IGNORECASE)
+    return spoken
+
+
 def _drawtext_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'").replace("%", "\\%").replace(",", "\\,")
 
@@ -135,13 +151,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
         raise RenderConfigurationError('Choose a voice ID or configure ELEVENLABS_VOICE_ID.')
     if not 0 <= voice_stability <= 1 or not 0 <= voice_similarity <= 1 or not 0.7 <= voice_speed <= 1.2:
         raise ValueError('Voice stability/similarity must be 0–1 and speed must be 0.7–1.2.')
-    spoken_script = script
-    for line in pronunciation_dictionary.splitlines():
-        if '=' not in line:
-            continue
-        term, pronunciation = [part.strip() for part in line.split('=', 1)]
-        if term and pronunciation:
-            spoken_script = re.sub(re.escape(term), lambda _: pronunciation, spoken_script, flags=re.IGNORECASE)
+    spoken_script = apply_pronunciation_dictionary(script, pronunciation_dictionary)
     response = httpx.post(
         f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
         headers={"xi-api-key": settings.elevenlabs_api_key, "Accept": "audio/mpeg", "Content-Type": "application/json"},
@@ -165,7 +175,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     for index, (scene, scene_duration) in enumerate(zip(scene_items, durations)):
         timeline.append({**scene, "index": index, "start_seconds": round(cursor, 3), "end_seconds": round(cursor + scene_duration, 3), "duration_seconds": round(scene_duration, 3)})
         cursor += scene_duration
-    manifest = {"title": title, "aspect": aspect, "visual_mode": visual_mode, "audio_duration_seconds": audio_duration, "music_volume": music_volume, "brand_logo_asset_id": brand_logo_asset_id, "music_asset_id": music_asset_id, "scenes": timeline}
+    manifest = {"title": title, "aspect": aspect, "visual_mode": visual_mode, "audio_duration_seconds": audio_duration, "music_volume": music_volume, "brand_logo_asset_id": brand_logo_asset_id, "music_asset_id": music_asset_id, "voice_id": voice_id, "voice_stability": voice_stability, "voice_similarity": voice_similarity, "voice_speed": voice_speed, "pronunciation_dictionary_applied": bool(pronunciation_dictionary.strip()), "scenes": timeline}
     (job_dir / "storyboard.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     segment_paths = []
     total_scenes = len(scene_items)
