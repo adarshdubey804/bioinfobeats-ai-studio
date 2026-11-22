@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 from app.core.config import settings
 
 celery_app = Celery('bioinfobeats', broker=settings.redis_url, backend=settings.redis_url)
@@ -12,7 +13,7 @@ celery_app.conf.update(
     beat_schedule={
         "daily-youtube-analytics-collection": {
             "task": "app.worker.analytics_tasks.collect_all_youtube_analytics",
-            "schedule": 86400.0,
+            "schedule": crontab(hour=settings.analytics_collection_hour_utc, minute=0),
             "options": {"expires": 3600},
         }
     },
