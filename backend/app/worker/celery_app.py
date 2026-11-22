@@ -11,5 +11,5 @@ celery_app.conf.update(
     task_track_started=True,
 )
 celery_app.autodiscover_tasks(['app.worker'])
-# This task module has a descriptive filename rather than Celery's default tasks.py.
 import app.worker.video_tasks  # noqa: E402,F401
+import app.worker.creative_tasks  # noqa: E402,F401
