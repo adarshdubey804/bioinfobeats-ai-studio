@@ -4,6 +4,7 @@ from app.worker.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.models.workflow import Workflow
 from app.rendering.service import render_video
+from app.worker.video_tasks import _prepare_assets
 from app.creative.service import create_creative_package
 
 logger = logging.getLogger(__name__)
@@ -68,17 +69,22 @@ def assemble_approved_production(self, workflow_id: str, render_id: str):
             }
             db.commit()
             options = config.get("video_render_request") or {}
+            scene_paths, music_path, logo_path = _prepare_assets(db, item.owner_id, render_id, options)
             progress = lambda value: _persist_progress(workflow_id, render_id, value)
             video_url = render_video(
                 render_id,
                 title,
                 script,
                 job["aspect"],
-                None,
-                None,
+                options.get("scenes") or [],
+                music_path,
                 job.get("visual_mode", "auto"),
                 options.get("music_volume", 0.12),
-                progress_callback=progress,
+                scene_paths,
+                logo_path,
+                options.get("brand_logo_asset_id"),
+                options.get("music_asset_id"),
+                progress,
                 voice_id=options.get("voice_id"),
                 voice_stability=options.get("voice_stability", 0.48),
                 voice_similarity=options.get("voice_similarity", 0.78),
