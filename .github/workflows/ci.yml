@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MEDIA_STORAGE_DIR: /tmp/bioinfobeats-test-media
+      PRIVATE_MEDIA_STORAGE_DIR: /tmp/bioinfobeats-test-private-media
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
