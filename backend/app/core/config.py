@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     render_timeout_seconds: int = 180
     media_storage_dir: str = '/data/media'
     ffmpeg_binary: str = 'ffmpeg'
+    buffer_access_token: str = ''
+    buffer_api_base_url: str = 'https://api.buffer.com'
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(',') if origin.strip()]
