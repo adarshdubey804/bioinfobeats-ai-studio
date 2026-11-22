@@ -106,6 +106,28 @@ def handoff_script_to_workflow(script_id: str, db: Session = Depends(get_db), us
     db.add(workflow); db.commit(); db.refresh(workflow)
     return {"workflow_id":workflow.id,"topic":workflow.topic,"status":workflow.status,"script":row.script}
 
+@router.get('/research/scripts/{script_id}/revisions/{revision_id}', tags=['research'])
+def get_script_revision(script_id: str, revision_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    row=db.query(ResearchScript).filter_by(id=script_id,user_id=user.id).first()
+    if row is None: raise HTTPException(404,"Research script not found.")
+    revision=db.query(ScriptRevision).filter_by(id=revision_id,script_id=script_id,user_id=user.id).first()
+    if revision is None: raise HTTPException(404,"Script revision not found.")
+    return {"id":revision.id,"version":revision.version,"title":revision.title,"script":revision.script,"sections":revision.sections,"change_note":revision.change_note,"created_at":revision.created_at.isoformat()}
+
+@router.post('/research/scripts/{script_id}/revisions/{revision_id}/restore', tags=['research'])
+def restore_script_revision(script_id: str, revision_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    row=db.query(ResearchScript).filter_by(id=script_id,user_id=user.id).first()
+    if row is None: raise HTTPException(404,"Research script not found.")
+    if row.status == "approved": raise HTTPException(409,"Approved scripts are locked. Create a new draft before restoring a revision.")
+    revision=db.query(ScriptRevision).filter_by(id=revision_id,script_id=script_id,user_id=user.id).first()
+    if revision is None: raise HTTPException(404,"Script revision not found.")
+    latest=db.query(ScriptRevision).filter_by(script_id=script_id,user_id=user.id).order_by(ScriptRevision.version.desc()).first()
+    next_version=(latest.version if latest else 1)+1
+    db.add(ScriptRevision(script_id=row.id,user_id=user.id,version=next_version,title=row.title,script=row.script,sections=row.sections,change_note=f"Before restoring version {revision.version}"))
+    row.title=revision.title; row.script=revision.script; row.sections=revision.sections
+    db.commit(); db.refresh(row)
+    return {**serialize_script(row),"revision":next_version,"restored_from":revision.version}
+
 def serialize_script(row):
     words=len(row.script.split())
     return {"id":row.id,"topic":row.topic,"audience":row.audience,"title":row.title,"script":row.script,"sections":row.sections,"claims":row.claims,"sources":row.sources,"fact_check":row.fact_check,"duration_minutes":row.target_duration_minutes,"word_count":words,"estimated_speaking_minutes":round(words/140,1),"status":row.status,"created_at":row.created_at.isoformat()}
