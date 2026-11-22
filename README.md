@@ -24,3 +24,9 @@ Configure LLM_API_KEY, TAVILY_API_KEY, YOUTUBE_API_KEY, Google OAuth values, ELE
 
 ## Tests
 cd backend && pip install -r requirements.txt && pytest
+
+
+## Video rendering pipeline
+The production renderer now creates an AI storyboard automatically when no scene prompts are supplied, generates scene artwork, animates each scene with slow Ken Burns camera movement, aligns scene timing and sentence captions to the generated narration duration, normalizes voice audio, optionally ducks background music under narration, and exports an H.264/AAC MP4 with fast-start metadata. Select vertical 9:16 or landscape 16:9 in the dashboard. Completed MP4s can be previewed in the production desk.
+
+This is a cinematic still-image animation workflow, not a text-to-video diffusion or live-action generative video service. Motion is created by FFmpeg camera animation; a dedicated generative video provider can be integrated as a later adapter. FFmpeg and ffprobe are installed in the backend container. Video generation requires ElevenLabs, OpenAI image generation and an LLM API key for automatic storyboards. Rendering retries transient task failures up to two times.
