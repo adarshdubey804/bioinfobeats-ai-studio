@@ -1,0 +1,30 @@
+from uuid import uuid4
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+from app.db.session import get_db
+from app.models.user import User
+from app.api.deps import get_current_user, get_owned_workflow
+from app.worker.production_tasks import assemble_approved_production
+
+router = APIRouter()
+
+class AssemblyRequest(BaseModel):
+    aspect: str = Field(default="vertical", pattern="^(vertical|landscape)$")
+
+@router.post("/workflows/{workflow_id}/production/assemble", tags=["production"])
+def assemble_production(workflow_id: str, payload: AssemblyRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    item=get_owned_workflow(workflow_id,user,db)
+    config=item.config or {}
+    script=config.get("approved_script") or ""
+    if not config.get("research_script_id") or len(script.strip()) < 30:
+        raise HTTPException(409,"This workflow has no approved research script. Create it from the Research Studio approval handoff.")
+    existing=config.get("production_assembly") or {}
+    if existing.get("status") in {"queued","rendering","generating_creatives"}:
+        raise HTTPException(409,"Production assembly is already running.")
+    render_id=str(uuid4())
+    job={"id":str(uuid4()),"render_id":render_id,"status":"queued","step":"queued","aspect":payload.aspect,"created_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}
+    item.config={**config,"approved_title":item.topic,"production_assembly":job,"video_render":{"id":render_id,"status":"queued","title":item.topic,"aspect":payload.aspect}}
+    db.commit()
+    assemble_approved_production.delay(workflow_id,render_id)
+    return {"workflow_id":workflow_id,**job,"message":"Approved script queued for narration, storyboard, video rendering, thumbnails and social copy. Review all assets before publishing."}

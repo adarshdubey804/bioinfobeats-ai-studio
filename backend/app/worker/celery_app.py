@@ -22,3 +22,5 @@ celery_app.autodiscover_tasks(['app.worker'])
 import app.worker.video_tasks  # noqa: E402,F401
 import app.worker.creative_tasks  # noqa: E402,F401
 import app.worker.analytics_tasks  # noqa: E402,F401
+
+import app.worker.production_tasks  # noqa: E402,F401
