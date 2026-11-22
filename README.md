@@ -1,6 +1,6 @@
 # BioinfoBeats AI Studio
 
-AI-assisted content production studio with six-agent orchestration, evidence collection, AI scene artwork, narrated FFmpeg rendering, creative assets and approval-gated Buffer publishing.
+AI-assisted content production studio with six-agent orchestration, evidence collection, AI scene artwork, narrated FFmpeg rendering, creative assets, approval-gated Buffer publishing and YouTube analytics.
 
 ## Platform
 - Next.js + TypeScript dashboard
@@ -10,6 +10,8 @@ AI-assisted content production studio with six-agent orchestration, evidence col
 - Six-stage AI pipeline, Tavily web research and YouTube Data API search
 - ElevenLabs narration, OpenAI scene and thumbnail generation, subtitles and FFmpeg MP4 export
 - Buffer GraphQL channel lookup and explicit approval-gated scheduling
+- YouTube public video statistics and owner-authorized channel analytics
+- AI performance summaries grounded in submitted metrics
 
 ## Run
 Copy .env.example to .env, configure credentials, then run docker compose up --build.
@@ -19,22 +21,17 @@ Dashboard: http://localhost:3000. API docs: http://localhost:8000/docs.
 Configure LLM_API_KEY, TAVILY_API_KEY, YOUTUBE_API_KEY, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, OPENAI_API_KEY and BUFFER_ACCESS_TOKEN as needed. Never commit real secrets.
 
 ## Video and creative assets
-POST /api/v1/workflows/{workflow_id}/render with title, script, aspect and optional scenes. POST /api/v1/workflows/{workflow_id}/creative with title, script and platforms to generate three thumbnail concepts and social copy.
+POST /api/v1/workflows/{workflow_id}/render with title, script, aspect and optional scenes. POST /api/v1/workflows/{workflow_id}/creative with title, script and platforms.
 
 ## Buffer publishing
-1. Create a Buffer API key in Buffer Settings → API and set BUFFER_ACCESS_TOKEN.
-2. GET /api/v1/publishing/channels to retrieve your connected channel IDs.
-3. Review the final content and then call POST /api/v1/workflows/{workflow_id}/publishing/approve:
-{
-  "channel_id": "your-buffer-channel-id",
-  "text": "Your reviewed post copy",
-  "approved": true,
-  "scheduled_at": "2026-12-01T10:30:00+05:30",
-  "publish_now": false
-}
-For immediate publishing, set publish_now true and omit scheduled_at. The approval endpoint is the only path that submits a post to Buffer. The API records the returned post ID, status, due time and external link. A workflow may be submitted once to avoid accidental duplicates.
+GET /api/v1/publishing/channels for connected channels. POST /api/v1/workflows/{workflow_id}/publishing/approve with approved=true and a future timezone-aware scheduled_at, or publish_now=true. Publishing remains an explicit user-approved action.
 
-Buffer uses GraphQL at https://api.buffer.com and Bearer-token authentication. Confirm channel-specific requirements and media support in Buffer's docs before using media posts. This initial integration schedules text posts only.
+## YouTube analytics
+- POST /api/v1/analytics/youtube/videos with {"video_ids":["VIDEO_ID"]} retrieves public views, likes, comments, title, publish date and duration. Engagement rate is calculated as (likes + comments) / views × 100.
+- POST /api/v1/analytics/youtube/channel with {"start_date":"2026-11-01","end_date":"2026-11-22"} retrieves owner-only channel views, likes, comments, watch time, average view duration, average view percentage and subscribers gained.
+- POST /api/v1/analytics/insights with {"topic":"Bioinformatics education","videos":[...]} generates cautious recommendations based only on supplied metrics.
+
+Public video statistics use the YouTube Data API key. Owner analytics requires an OAuth access token with the Google YouTube Analytics read-only scope. The current version accepts a configured access token; it does not yet implement OAuth consent, refresh-token storage, automatic scheduled sync, or Instagram/LinkedIn analytics. Public statistics do not expose private watch-time or retention data.
 
 ## Research
 POST /api/v1/research/web or /api/v1/research/youtube with {"query":"BLAST bioinformatics tutorial","max_results":5}.

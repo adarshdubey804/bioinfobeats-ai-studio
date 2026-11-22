@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = 120
     tavily_api_key: str = ''
     youtube_api_key: str = ''
+    youtube_oauth_access_token: str = ''
     research_timeout_seconds: int = 30
     elevenlabs_api_key: str = ''
     elevenlabs_voice_id: str = ''
