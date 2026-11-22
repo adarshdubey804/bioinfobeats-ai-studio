@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     render_timeout_seconds: int = 180
     media_storage_dir: str = '/data/media'
     ffmpeg_binary: str = 'ffmpeg'
+    ffprobe_binary: str = 'ffprobe'
     buffer_access_token: str = ''
     buffer_api_base_url: str = 'https://api.buffer.com'
     @property

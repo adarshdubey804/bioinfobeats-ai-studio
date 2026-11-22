@@ -33,7 +33,7 @@ def _validate_render_output(path: Path) -> dict:
     if not path.is_file() or path.stat().st_size < 1024:
         raise RenderCommandError("Final MP4 is missing or unexpectedly small.")
     raw = _run([
-        "ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height",
+        settings.ffprobe_binary, "-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height",
         "-of", "json", str(path),
     ])
     try:
@@ -64,7 +64,7 @@ def _run(command: list[str], timeout: int | None = None) -> str:
         raise RenderCommandError("Media processing timed out. Increase RENDER_TIMEOUT_SECONDS or reduce scene complexity.") from exc
 
 def _duration(path: Path) -> float:
-    value = _run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)])
+    value = _run([settings.ffprobe_binary, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)])
     duration = float(value)
     if duration <= 0:
         raise ValueError("Could not determine narration duration.")
