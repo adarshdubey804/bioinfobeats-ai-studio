@@ -9,13 +9,13 @@ class Settings(BaseSettings):
     secret_key: str = 'unsafe-development-key-change-me'
     access_token_expire_minutes: int = 60
     cors_origins: str = 'http://localhost:3000'
+    analytics_collection_hour_utc: int = 3
     llm_api_key: str = ''
     llm_base_url: str = 'https://api.openai.com/v1'
     llm_model: str = 'gpt-4o-mini'
     llm_timeout_seconds: int = 120
     tavily_api_key: str = ''
     youtube_api_key: str = ''
-    youtube_oauth_access_token: str = ''
     google_oauth_client_id: str = ''
     google_oauth_client_secret: str = ''
     google_oauth_redirect_uri: str = 'http://localhost:8000/api/v1/oauth/google/callback'

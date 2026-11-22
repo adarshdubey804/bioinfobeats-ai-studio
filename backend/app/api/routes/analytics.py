@@ -7,7 +7,10 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.models.google_oauth import GoogleOAuthConnection
+from app.models.analytics_snapshot import AnalyticsSnapshot
 from app.analytics.youtube import public_video_stats, owner_channel_report, AnalyticsConfigurationError
+from app.analytics.collection import collect_connection_snapshot
+from app.worker.analytics_tasks import collect_user_youtube_analytics
 from app.agents.pipeline import _call_model
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -31,11 +34,23 @@ def youtube_video_stats(payload: VideoStatsRequest):
 @router.post("/analytics/youtube/channel", tags=["analytics"])
 def youtube_channel_report(payload: ChannelReportRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     connection = db.query(GoogleOAuthConnection).filter_by(user_id=user.id).first()
-    if connection is None:
-        raise HTTPException(409, "Connect your YouTube channel in Settings before requesting private analytics.")
+    if connection is None: raise HTTPException(409, "Connect your YouTube channel in Settings before requesting private analytics.")
     try: return owner_channel_report(payload.start_date, payload.end_date, connection)
     except ValueError as exc: raise HTTPException(400, str(exc))
     except httpx.HTTPError as exc: raise HTTPException(502, f"YouTube Analytics API error: {exc}")
+
+@router.post("/analytics/youtube/collect", tags=["analytics"])
+def queue_analytics_collection(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    connection = db.query(GoogleOAuthConnection).filter_by(user_id=user.id).first()
+    if connection is None: raise HTTPException(409, "Connect your YouTube channel before collecting analytics.")
+    task = collect_user_youtube_analytics.delay(user.id)
+    return {"status": "queued", "task_id": task.id}
+
+@router.get("/analytics/history", tags=["analytics"])
+def analytics_history(limit: int = 30, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if limit < 1 or limit > 100: raise HTTPException(400, "limit must be between 1 and 100.")
+    rows = db.query(AnalyticsSnapshot).filter_by(user_id=user.id).order_by(AnalyticsSnapshot.created_at.desc()).limit(limit).all()
+    return [{"id": row.id, "period_start": row.period_start, "period_end": row.period_end, "report": row.report, "created_at": row.created_at.isoformat()} for row in rows]
 
 @router.post("/analytics/insights", tags=["analytics"])
 def performance_insights(payload: InsightsRequest):

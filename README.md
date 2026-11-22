@@ -1,28 +1,26 @@
 # BioinfoBeats AI Studio
 
-AI-assisted content production studio with six-agent orchestration, research, AI scene artwork, narrated FFmpeg rendering, creative assets, approval-gated Buffer publishing, YouTube analytics and account-isolated workspaces.
+AI-assisted content production studio with six-agent orchestration, research, video rendering, creative assets, approval-gated Buffer publishing, Google OAuth and YouTube analytics.
 
 ## Run
 Copy .env.example to .env, configure credentials, then run docker compose up --build.
 Dashboard: http://localhost:3000. API docs: http://localhost:8000/docs.
-Set frontend NEXT_PUBLIC_API_URL to the public API URL when deploying.
 
-## Google / YouTube owner analytics setup
-1. In Google Cloud Console, create an OAuth 2.0 Web application client.
-2. Enable YouTube Analytics API for the project.
-3. Add the exact redirect URI from GOOGLE_OAUTH_REDIRECT_URI to the OAuth client's authorized redirect URIs.
-4. Configure GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URI and GOOGLE_OAUTH_FRONTEND_URL.
-5. Set OAUTH_TOKEN_ENCRYPTION_KEY to a long random secret, distinct from SECRET_KEY. Refresh tokens are encrypted at rest with Fernet before database storage.
-6. Sign in to the dashboard and select Connect Google account. Grant YouTube Analytics read-only permission.
-7. Use the private channel report control to retrieve owner-authorized metrics.
+## Automated YouTube analytics
+Celery Beat schedules a daily collection job. It retrieves a rolling seven-day YouTube Analytics report for each connected Google account and stores immutable snapshots in PostgreSQL. Configure the Google OAuth client, YouTube Analytics API and OAUTH_TOKEN_ENCRYPTION_KEY as described below. Start the beat service with Docker Compose (included). The scheduled task logs per-account failures and continues processing other connections.
 
-OAuth routes:
-- GET /api/v1/oauth/google/start (bearer-authenticated)
-- GET /api/v1/oauth/google/callback (Google redirect)
-- GET /api/v1/oauth/google/status (bearer-authenticated)
-- DELETE /api/v1/oauth/google (bearer-authenticated; revokes grant)
+Manual endpoints (bearer token required):
+- POST /api/v1/analytics/youtube/collect queues a collection for the signed-in account.
+- GET /api/v1/analytics/history?limit=30 returns the signed-in account's stored snapshots.
+- POST /api/v1/analytics/youtube/channel fetches an ad-hoc date range.
 
-The OAuth flow uses signed, expiring state tied to the signed-in user, server-side code exchange, encrypted refresh-token storage, automatic access-token refresh for reports and explicit disconnect/revocation. Never expose Google client secrets or refresh tokens to the browser. Configure the OAuth consent screen and publishing status in Google Cloud Console; external users may require app verification.
+Collection uses the previous seven complete calendar days (ending yesterday) to avoid partial current-day data. Snapshots preserve the source report and collection timestamp. This version does not yet send email/push notifications or automatically generate an LLM report after every collection.
+
+## Google OAuth
+Create a Google OAuth Web application, enable YouTube Analytics API, add GOOGLE_OAUTH_REDIRECT_URI as an authorized redirect URI, and configure GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URI, GOOGLE_OAUTH_FRONTEND_URL and OAUTH_TOKEN_ENCRYPTION_KEY. Grant YouTube Analytics read-only scope. Refresh tokens are encrypted at rest.
+
+## Provider keys
+Configure LLM_API_KEY, TAVILY_API_KEY, YOUTUBE_API_KEY, Google OAuth values, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, OPENAI_API_KEY and BUFFER_ACCESS_TOKEN. Never commit real secrets.
 
 ## Tests
 cd backend && pip install -r requirements.txt && pytest

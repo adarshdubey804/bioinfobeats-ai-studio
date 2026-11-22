@@ -44,6 +44,16 @@ services:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
     command: celery -A app.worker.celery_app.celery_app worker --loglevel=INFO
+  beat:
+    build: {context: ./backend}
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://bioinfobeats:local-dev-only@db:5432/bioinfobeats}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    command: celery -A app.worker.celery_app.celery_app beat --loglevel=INFO
   web:
     build:
       context: ./frontend
