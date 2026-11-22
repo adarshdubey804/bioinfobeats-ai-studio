@@ -29,6 +29,11 @@ class VideoRenderRequest(BaseModel):
     brand_logo_asset_id: str | None = None
     visual_mode: str = Field(default="auto", pattern="^(auto|static|ai)$")
     music_volume: float = Field(default=0.12, ge=0, le=0.3)
+    voice_id: str | None = Field(default=None, min_length=1, max_length=100)
+    voice_stability: float = Field(default=0.48, ge=0, le=1)
+    voice_similarity: float = Field(default=0.78, ge=0, le=1)
+    voice_speed: float = Field(default=1.0, ge=0.7, le=1.2)
+    pronunciation_dictionary: str = Field(default='', max_length=3000)
 
 def _validate_asset(db: Session, user_id: str, asset_id: str | None, allowed: set[str], label: str):
     if not asset_id:

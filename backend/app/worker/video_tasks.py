@@ -88,7 +88,7 @@ def render_workflow_video(self, workflow_id: str, render_id: str):
         try:
             scene_paths, music_path, logo_path = _prepare_assets(db, item.owner_id, render_id, request)
             progress_callback = lambda progress: _persist_progress(workflow_id, render_id, progress)
-            url = render_video(render_id, request["title"], request["script"], request["aspect"], request.get("scenes"), music_path or request.get("music_filename"), request.get("visual_mode", "auto"), request.get("music_volume", 0.12), scene_paths, logo_path, request.get("brand_logo_asset_id"), request.get("music_asset_id"), progress_callback)
+            url = render_video(render_id, request["title"], request["script"], request["aspect"], request.get("scenes"), music_path or request.get("music_filename"), request.get("visual_mode", "auto"), request.get("music_volume", 0.12), scene_paths, logo_path, request.get("brand_logo_asset_id"), request.get("music_asset_id"), progress_callback, request.get("voice_id"), request.get("voice_stability", 0.48), request.get("voice_similarity", 0.78), request.get("voice_speed", 1.0), request.get("pronunciation_dictionary", ""))
             item = db.get(Workflow, workflow_id)
             item.config = {**(item.config or {}), "video_render": {**(item.config or {})["video_render"], "status": "ready_for_review", "url": url, "progress": {"stage": "complete", "percent": 100, "message": "Video render completed and validated"}}}
             db.commit()

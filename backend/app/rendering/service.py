@@ -118,7 +118,7 @@ def _caption_filter(srt_path: Path, width: int) -> str:
     font_size = 24 if width < 1500 else 32
     return f"subtitles='{safe}':force_style='FontName=DejaVu Sans,FontSize={font_size},PrimaryColour=&H00FFFFFF,OutlineColour=&H00101820,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=90'"
 
-def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto", music_volume: float = 0.12, scene_asset_paths: dict[int, str] | None = None, brand_logo_path: str | None = None, brand_logo_asset_id: str | None = None, music_asset_id: str | None = None, progress_callback=None) -> str:
+def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto", music_volume: float = 0.12, scene_asset_paths: dict[int, str] | None = None, brand_logo_path: str | None = None, brand_logo_asset_id: str | None = None, music_asset_id: str | None = None, progress_callback=None, voice_id: str | None = None, voice_stability: float = 0.48, voice_similarity: float = 0.78, voice_speed: float = 1.0, pronunciation_dictionary: str = '') -> str:
     if not settings.elevenlabs_api_key or not settings.elevenlabs_voice_id:
         raise RenderConfigurationError("Configure ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to render narration.")
     render_id = _safe_id(render_id)
@@ -130,10 +130,22 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     logger.info("Render %s started (aspect=%s)", render_id, aspect)
     _report_progress(progress_callback, "narration", 5, "Generating narration")
     audio_path, srt_path, video_path = job_dir / "narration.mp3", job_dir / "captions.srt", job_dir / "final.mp4"
+    voice_id = (voice_id or settings.elevenlabs_voice_id).strip()
+    if not voice_id:
+        raise RenderConfigurationError('Choose a voice ID or configure ELEVENLABS_VOICE_ID.')
+    if not 0 <= voice_stability <= 1 or not 0 <= voice_similarity <= 1 or not 0.7 <= voice_speed <= 1.2:
+        raise ValueError('Voice stability/similarity must be 0–1 and speed must be 0.7–1.2.')
+    spoken_script = script
+    for line in pronunciation_dictionary.splitlines():
+        if '=' not in line:
+            continue
+        term, pronunciation = [part.strip() for part in line.split('=', 1)]
+        if term and pronunciation:
+            spoken_script = re.sub(re.escape(term), lambda _: pronunciation, spoken_script, flags=re.IGNORECASE)
     response = httpx.post(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{settings.elevenlabs_voice_id}",
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
         headers={"xi-api-key": settings.elevenlabs_api_key, "Accept": "audio/mpeg", "Content-Type": "application/json"},
-        json={"text": script, "model_id": settings.elevenlabs_model_id, "voice_settings": {"stability": 0.48, "similarity_boost": 0.78}},
+        json={"text": spoken_script, "model_id": settings.elevenlabs_model_id, "voice_settings": {"stability": voice_stability, "similarity_boost": voice_similarity, "speed": voice_speed}},
         timeout=settings.render_timeout_seconds,
     )
     response.raise_for_status()
