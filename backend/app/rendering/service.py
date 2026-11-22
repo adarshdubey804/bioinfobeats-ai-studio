@@ -156,7 +156,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     command = [settings.ffmpeg_binary, "-y", "-i", str(visual_path), "-i", str(audio_path)]
     if music_path:
         command += ["-stream_loop", "-1", "-i", str(music_path)]
-        audio_filter = "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice];[2:a]volume={music_volume}[music];[music][voice]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=350[ducked];[voice][ducked]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+        audio_filter = f"[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice];[2:a]volume={music_volume}[music];[music][voice]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=350[ducked];[voice][ducked]amix=inputs=2:duration=first:dropout_transition=2[aout]"
         command += ["-vf", caption_filter, "-filter_complex", audio_filter, "-map", "0:v", "-map", "[aout]"]
     else:
         command += ["-vf", caption_filter, "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-map", "0:v", "-map", "1:a"]
