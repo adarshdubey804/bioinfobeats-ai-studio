@@ -106,3 +106,7 @@ The public static mount now serves only files under `MEDIA_STORAGE_DIR/public`: 
 
 ## Persistent background job history
 Agent pipeline queueing and one-click production assembly each create a durable `job_runs` record (migration `0010_job_runs`). Records retain task type, Celery task ID, status, progress payload, retry attempt count, error details, and lifecycle timestamps. Authenticated owners can inspect the latest 50 runs for a workflow with `GET /api/v1/workflows/{workflow_id}/jobs`. Production render-stage progress updates the corresponding run; completion and bounded retry/failure outcomes are recorded. This is application-level execution history, not a guarantee that a task survives loss of the Redis broker; deploy Redis with persistence and backups, and monitor stale running jobs.
+
+
+### Background job cancellation
+Authenticated users can request cancellation with `POST /api/v1/workflows/{workflow_id}/jobs/{job_id}/cancel`. Queued tasks are revoked without worker termination. Running tasks receive a cooperative cancellation request and stop at their next supported safe checkpoint; a video render already executing FFmpeg/provider work is not force-killed, so it may finish that stage before cancellation is acknowledged. Cancelled workflows can be queued again. The API returns `cancelling` while a running worker is reaching its checkpoint.

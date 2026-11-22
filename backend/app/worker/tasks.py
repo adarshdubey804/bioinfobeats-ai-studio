@@ -18,6 +18,13 @@ def execute_workflow(self, workflow_id: str, job_id: str | None = None):
                 run.finished_at = datetime.now(timezone.utc)
                 db.commit()
             return {"status": "not_found"}
+        if run and run.cancel_requested:
+            run.status = 'cancelled'
+            run.finished_at = datetime.now(timezone.utc)
+            run.progress = {'stage': 'cancelled', 'percent': 0, 'message': 'Cancelled before execution'}
+            item.status = 'cancelled'
+            db.commit()
+            return {'workflow_id': workflow_id, 'status': 'cancelled'}
         if run:
             run.celery_task_id = self.request.id
             run.status = "running"
@@ -28,6 +35,15 @@ def execute_workflow(self, workflow_id: str, job_id: str | None = None):
         db.commit()
         try:
             outputs = run_pipeline(item.topic, item.config or {})
+            if run:
+                db.refresh(run)
+            if run and run.cancel_requested:
+                run.status = 'cancelled'
+                run.finished_at = datetime.now(timezone.utc)
+                run.progress = {'stage': 'cancelled', 'percent': 0, 'message': 'Cancellation acknowledged after pipeline completion'}
+                item.status = 'cancelled'
+                db.commit()
+                return {'workflow_id': workflow_id, 'status': 'cancelled'}
             item.config = {**(item.config or {}), "agent_outputs": outputs, "pipeline_version": "phase-2"}
             item.status = "ready_for_review"
             if run:

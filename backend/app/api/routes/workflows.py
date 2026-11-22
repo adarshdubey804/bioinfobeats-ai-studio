@@ -8,6 +8,8 @@ import uuid
 from app.schemas.workflow import WorkflowCreate
 from app.worker.tasks import execute_workflow
 from app.api.deps import get_current_user, get_owned_workflow
+from app.worker.celery_app import celery_app
+from datetime import datetime, timezone
 
 router = APIRouter()
 
@@ -38,7 +40,7 @@ def get_workflow(workflow_id: str, db: Session = Depends(get_db), user: User = D
 @router.post('/workflows/{workflow_id}/queue', tags=['workflows'])
 def queue_workflow(workflow_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     item = get_owned_workflow(workflow_id, user, db)
-    if item.status not in {'draft', 'failed'}: raise HTTPException(409, f'Cannot queue workflow in {item.status} state')
+    if item.status not in {'draft', 'failed', 'cancelled'}: raise HTTPException(409, f'Cannot queue workflow in {item.status} state')
     item.status = 'queued'; db.commit()
     run = JobRun(id=str(uuid.uuid4()), workflow_id=item.id, task_type="agent_pipeline", status="queued", progress={"stage": "queued", "percent": 0})
     db.add(run); db.commit(); db.refresh(run)
@@ -51,4 +53,34 @@ def queue_workflow(workflow_id: str, db: Session = Depends(get_db), user: User =
 def list_workflow_jobs(workflow_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     get_owned_workflow(workflow_id, user, db)
     runs = db.query(JobRun).filter(JobRun.workflow_id == workflow_id).order_by(JobRun.created_at.desc()).limit(50).all()
-    return [{"id": r.id, "task_type": r.task_type, "celery_task_id": r.celery_task_id, "status": r.status, "progress": r.progress, "error": r.error, "attempts": r.attempts, "created_at": r.created_at.isoformat(), "started_at": r.started_at.isoformat() if r.started_at else None, "finished_at": r.finished_at.isoformat() if r.finished_at else None} for r in runs]
+    return [{"id": r.id, "task_type": r.task_type, "celery_task_id": r.celery_task_id, "status": r.status, "progress": r.progress, "error": r.error, "cancel_requested": r.cancel_requested, "attempts": r.attempts, "created_at": r.created_at.isoformat(), "started_at": r.started_at.isoformat() if r.started_at else None, "finished_at": r.finished_at.isoformat() if r.finished_at else None} for r in runs]
+
+
+@router.post('/workflows/{workflow_id}/jobs/{job_id}/cancel', tags=['workflows'])
+def cancel_workflow_job(workflow_id: str, job_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    item = get_owned_workflow(workflow_id, user, db)
+    run = db.query(JobRun).filter(JobRun.id == job_id, JobRun.workflow_id == workflow_id).first()
+    if run is None:
+        raise HTTPException(404, 'Job not found')
+    if run.status in {'succeeded', 'failed', 'cancelled'}:
+        raise HTTPException(409, f'Cannot cancel a job in {run.status} state')
+    run.cancel_requested = True
+    if run.status == 'queued':
+        run.status = 'cancelled'
+        run.finished_at = datetime.now(timezone.utc)
+        run.progress = {'stage': 'cancelled', 'percent': 0, 'message': 'Cancelled before execution'}
+        if run.celery_task_id:
+            celery_app.control.revoke(run.celery_task_id, terminate=False)
+        if run.task_type == 'agent_pipeline':
+            item.status = 'cancelled'
+        elif run.task_type == 'production_assembly':
+            config = item.config or {}
+            assembly = config.get('production_assembly') or {}
+            item.config = {**config, 'production_assembly': {**assembly, 'status': 'cancelled', 'step': 'cancelled'}}
+    else:
+        run.status = 'cancelling'
+        run.progress = {**(run.progress or {}), 'message': 'Cancellation requested; worker will stop at its next safe checkpoint'}
+        if run.celery_task_id:
+            celery_app.control.revoke(run.celery_task_id, terminate=False)
+    db.commit()
+    return {'job_id': run.id, 'status': run.status, 'cancel_requested': True, 'message': 'Cancellation recorded'}

@@ -60,6 +60,12 @@ def assemble_approved_production(self, workflow_id: str, render_id: str, job_run
             run.attempts += 1
             run.progress = {"stage": "starting", "percent": 2, "message": "Production assembly started"}
             db.commit()
+        if run and run.cancel_requested:
+            run.status = 'cancelled'
+            run.finished_at = datetime.now(timezone.utc)
+            run.progress = {'stage': 'cancelled', 'percent': 0, 'message': 'Cancelled at safe checkpoint'}
+            db.commit()
+            return {'status': 'cancelled'}
         config = item.config or {}
         job = config.get("production_assembly") or {}
         if job.get("render_id") != render_id:
@@ -131,7 +137,16 @@ def assemble_approved_production(self, workflow_id: str, render_id: str, job_run
         current_job = config.get("production_assembly") or job
         item.config = {**config, "production_assembly": {**current_job, "status": "generating_creatives", "step": "thumbnails_and_social_copy", "video_url": video_url}}
         db.commit()
-        creative = create_creative_package(workflow_id, item.topic, title, script, ["YouTube", "Instagram", "LinkedIn"])
+        if run:
+            db.refresh(run)
+        if run and run.cancel_requested:
+            run.status = 'cancelled'
+            run.finished_at = datetime.now(timezone.utc)
+            run.progress = {'stage': 'cancelled', 'percent': 85, 'message': 'Video retained; creative generation cancelled'}
+            item.config = {**config, 'production_assembly': {**current_job, 'status': 'cancelled', 'step': 'cancelled', 'video_url': video_url}}
+            db.commit()
+            return {'status': 'cancelled', 'video_url': video_url}
+        creative = create_creative_package(workflow_id, item.topic, title, script, ['YouTube', 'Instagram', 'LinkedIn'])
         item = db.get(Workflow, workflow_id)
         config = item.config or {}
         if run:

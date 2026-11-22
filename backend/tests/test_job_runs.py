@@ -7,3 +7,4 @@ def test_job_run_stores_durable_execution_state():
     assert run.status == "queued"
     assert run.progress["percent"] == 0
     assert run.attempts in (None, 0)
+    assert run.cancel_requested in (None, False)
