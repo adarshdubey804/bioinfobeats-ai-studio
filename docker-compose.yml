@@ -29,7 +29,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     ports: ["8000:8000"]
-    volumes: ["media_data:/data/media"]
+    volumes: ["media_data:/data/media", "private_media_data:/data/private-media"]
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -67,3 +67,4 @@ services:
 volumes:
   postgres_data:
   media_data:
+  private_media_data:
