@@ -6,7 +6,7 @@ ACTIVE_JOB_STATUSES = {"queued", "running", "retrying", "cancelling"}
 def job_health(run, now=None):
     """Return stale-job diagnostics without mutating or replaying work."""
     now = now or datetime.now(timezone.utc)
-    anchor = run.started_at or run.created_at
+    anchor = run.heartbeat_at or run.started_at or run.created_at
     if anchor.tzinfo is None:
         anchor = anchor.replace(tzinfo=timezone.utc)
     age_seconds = max(0, int((now - anchor).total_seconds()))

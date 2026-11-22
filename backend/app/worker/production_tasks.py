@@ -27,6 +27,7 @@ def _persist_progress(workflow_id: str, render_id: str, progress: dict, job_run_
         if run:
             run.status = "running"
             run.progress = progress
+            run.heartbeat_at = datetime.now(timezone.utc)
         item.config = {
             **config,
             "video_render": {**current, "id": render_id, "status": "rendering", "progress": progress},
@@ -57,6 +58,7 @@ def assemble_approved_production(self, workflow_id: str, render_id: str, job_run
             run.celery_task_id = self.request.id
             run.status = "running"
             run.started_at = run.started_at or datetime.now(timezone.utc)
+            run.heartbeat_at = datetime.now(timezone.utc)
             run.attempts += 1
             run.progress = {"stage": "starting", "percent": 2, "message": "Production assembly started"}
             db.commit()
@@ -150,6 +152,7 @@ def assemble_approved_production(self, workflow_id: str, render_id: str, job_run
         item = db.get(Workflow, workflow_id)
         config = item.config or {}
         if run:
+            run.heartbeat_at = datetime.now(timezone.utc)
             run.status = "succeeded"
             run.progress = {"stage": "complete", "percent": 100, "message": "Video and creative assets are ready for review"}
             run.error = None
@@ -169,6 +172,7 @@ def assemble_approved_production(self, workflow_id: str, render_id: str, job_run
             prior = config.get("production_assembly") or {}
             retrying = self.request.retries < self.max_retries
             if run:
+                run.heartbeat_at = datetime.now(timezone.utc)
                 run.status = "retrying" if retrying else "failed"
                 run.error = str(exc)[:4000]
                 run.progress = {"stage": prior.get("step", "failed"), "percent": 0, "message": "Retry scheduled" if retrying else "Production assembly failed"}

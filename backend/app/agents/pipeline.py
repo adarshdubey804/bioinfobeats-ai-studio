@@ -40,7 +40,7 @@ def _call_model(agent_key: str, agent_name: str, instruction: str, context: dict
     except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"{agent_key} failed: {exc}") from exc
 
-def run_pipeline(topic: str, workflow_config: dict[str, Any]) -> dict[str, Any]:
+def run_pipeline(topic: str, workflow_config: dict[str, Any], progress_callback=None) -> dict[str, Any]:
     context: dict[str, Any] = {
         "topic": topic,
         "brand": workflow_config.get("brand", "BioinfoBeats"),
@@ -55,4 +55,6 @@ def run_pipeline(topic: str, workflow_config: dict[str, Any]) -> dict[str, Any]:
     for key, name, instruction in AGENT_PROMPTS:
         result = _call_model(key, name, instruction, {**context, "previous_agent_outputs": outputs})
         outputs[key] = result
+        if progress_callback:
+            progress_callback(key, len(outputs), len(AGENT_PROMPTS))
     return outputs
