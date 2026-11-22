@@ -67,11 +67,11 @@ The storyboard editor now includes a proportional scene timeline, narration/musi
 
 
 ## Advanced editing and export controls (Phase 23)
-The storyboard editor supports moving scenes earlier/later, per-scene text overlays/lower-thirds, duration weights, and cut/fade transition choices. During rendering, overlay text is burned into each scene and fade transitions fade that scene at its boundaries; cut leaves boundaries hard. Select vertical (9:16) for Shorts/Reels or landscape (16:9) for YouTube long-form. Save the storyboard before queueing a render. This is not yet a drag-and-drop NLE: there is no waveform, multi-layer compositing, animated lower-third library, or true crossfade overlap. The renderer outputs H.264/AAC MP4. 
+The storyboard editor supports moving scenes earlier/later, per-scene text overlays/lower-thirds, duration weights, and cut/fade transition choices. During rendering, overlay text is burned into each scene and fade transitions fade that scene at its boundaries; cut leaves boundaries hard. Select vertical (9:16) for Shorts/Reels or landscape (16:9) for YouTube long-form. Save the storyboard before queueing a render. This remains a lightweight scene editor rather than a full nonlinear editing suite: there is no waveform display, independent clip trimming, multitrack timeline, or true overlapping crossfade. The renderer outputs H.264/AAC MP4. 
 
 
 ## Media Library (Phase 24)
-The authenticated media library stores reusable user-owned assets in the shared media volume and records metadata in PostgreSQL. Upload with POST /api/v1/media/library?media_type=image|audio|video using multipart field "file"; list with GET /api/v1/media/library?q=&media_type=all|image|audio|video; delete with DELETE /api/v1/media/library/{asset_id}. Uploads are limited to 50 MB and allowlisted JPEG, PNG, WebP, MP3, WAV, OGG, MP4 and WebM. Each account sees and manages only its own records. Media files are served by the existing /media static mount, so possession of a media URL grants access to that file; do not upload confidential assets. Files persist in the Docker media_data volume. This phase provides upload, search, preview and deletion; direct insertion of library assets into the scene-render pipeline is a subsequent integration.
+The authenticated media library stores reusable user-owned assets in the shared media volume and records metadata in PostgreSQL. Upload with POST /api/v1/media/library?media_type=image|audio|video using multipart field "file"; list with GET /api/v1/media/library?q=&media_type=all|image|audio|video; delete with DELETE /api/v1/media/library/{asset_id}. Uploads are limited to 50 MB and allowlisted JPEG, PNG, WebP, MP3, WAV, OGG, MP4 and WebM. Each account sees and manages only its own records. Media files are served by the existing /media static mount, so possession of a media URL grants access to that file; do not upload confidential assets. Files persist in the Docker media_data volume. The editor and render pipeline can select library images/videos for individual scenes, background music, and a brand logo. Media URLs are served by the shared static mount and are therefore shareable by anyone who obtains the URL; do not upload confidential material.
 
 
 ## Media-to-video scene integration (Phase 25)
@@ -79,7 +79,7 @@ Render requests may attach a user-owned image/video asset to each scene using sc
 
 
 ## AI voice and pronunciation controls (Phase 29)
-Video render requests accept optional `voice_id`, `voice_stability` (0–1), `voice_similarity` (0–1), `voice_speed` (0.7–1.2), and `pronunciation_dictionary` (up to 3000 characters). Leave voice_id blank to use ELEVENLABS_VOICE_ID. Pronunciation entries use one `term=spoken form` per line and are applied to narration text before synthesis; the original script remains the editorial source for captions and storyboard. The dashboard exposes voice ID, stability, similarity, speed, pronunciation mapping, and existing music gain. Voice IDs must belong to the configured ElevenLabs account. This phase does not include a voice catalog browser or standalone audio preview.
+Video render requests accept optional `voice_id`, `voice_stability` (0–1), `voice_similarity` (0–1), `voice_speed` (0.7–1.2), and `pronunciation_dictionary` (up to 3000 characters). Leave voice_id blank to use ELEVENLABS_VOICE_ID. Pronunciation entries use one `term=spoken form` per line and are applied to narration text before synthesis; the original script remains the editorial source for captions and storyboard. The dashboard exposes voice ID, stability, similarity, speed, pronunciation mapping, and existing music gain. Voice IDs must belong to the configured ElevenLabs account. The dashboard also supports voice catalog selection, short authenticated audio previews, and browser-local voice presets. Presets are not synced across devices.
 
 
 ## Voice library, previews and presets (Phase 30)
@@ -88,3 +88,13 @@ The authenticated `GET /api/v1/audio/voices` endpoint lists voices available to 
 
 ## Rendering scale update
 The render API and storyboard editor support up to 20 scenes per video. This is a practical throughput limit rather than an absolute architectural ceiling; very large scene counts increase image/video provider cost and FFmpeg render time. Provider quotas, file sizes, hardware and platform upload rules remain external constraints.
+
+
+## One-click production settings and retry behavior
+The approved-production assembly request accepts the same scene, media, music, and voice settings as an individual render. It validates selected media ownership before queueing, copies selected assets into the render job folder, and records voice settings in the storyboard manifest. Production assembly resumes at the creative-package stage if the video render has already completed, avoiding an unnecessary second render on a thumbnail-generation retry. Worker tasks retry transient failures with bounded exponential backoff. Publishing is never triggered by assembly.
+
+## Continuous integration and deployment smoke test
+GitHub Actions runs the backend pytest suite, the Next.js production build, and a Docker Compose smoke test. The smoke test starts PostgreSQL, Redis, API, Celery worker/beat and frontend; waits for database/Redis readiness; registers and authenticates a test account; and checks the authenticated workflow endpoint. A passing CI run validates the containerized application foundation, not external provider credentials or paid provider availability.
+
+## Operational boundaries
+External providers impose their own quotas, costs, account permissions, rate limits, and model availability. Configure valid credentials before enabling provider-backed features. The renderer currently limits a request to 20 scenes; media uploads are limited to 50 MB; voice previews accept at most 800 characters. Public static media URLs are shareable and are not suitable for private or regulated content. A real production deployment should add private object storage/CDN access controls, backups, HTTPS, secret rotation, monitoring, and a managed queue/database. No codebase can remove third-party quotas or platform publishing rules.
