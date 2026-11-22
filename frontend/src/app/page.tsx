@@ -1,2 +1,76 @@
-const agents=[['01','Topic Researcher','Find trends, topics and source material'],['02','Fact-check Researcher','Validate claims and preserve references'],['03','Competitor Researcher','Discover formats, patterns and content gaps'],['04','AI Video Generator','Prepare scripts, voice and avatar jobs'],['05','Video Editor','Build edits, captions and render tasks'],['06','Creative & Publishing','Prepare posters and publishing packages']];
-export default function Home(){return <main className="shell"><nav><div className="brand"><span className="brandMark">B</span><span>BioinfoBeats <b>AI Studio</b></span></div><span className="status"><i/> SYSTEM FOUNDATION</span></nav><section className="hero"><p className="eyebrow">YOUR CREATIVE OPERATING SYSTEM</p><h1>From an idea<br/>to <em>every platform.</em></h1><p className="intro">A coordinated team of AI agents for research, video production, creative assets and social publishing. One workspace. Human approval at every important step.</p><div className="actions"><a className="primary" href="#agents">Explore your agents <span>↗</span></a><span className="muted">PHASE 1 · PLATFORM FOUNDATION</span></div></section><section id="agents" className="agents"><div className="sectionHead"><div><p className="eyebrow">THE PRODUCTION TEAM</p><h2>Six agents. One workflow.</h2></div><span className="count">06 / 06 REGISTERED</span></div><div className="grid">{agents.map(([n,name,desc])=><article className="agent" key={n}><div className="agentTop"><span>{n}</span><span className="ready">REGISTERED</span></div><h3>{name}</h3><p>{desc}</p><div className="line"/></article>)}</div></section><footer><span>© 2026 BIOINFOBEATS AI STUDIO</span><span>BUILT FOR THE NEXT IDEA.</span></footer></main>}
+'use client';
+
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+
+const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1';
+type Workflow = { id:string; topic:string; status:string; config:Record<string, any>; agent_outputs:any; pipeline_error?:string; created_at:string };
+type Channel = { id:string; name:string; service:string };
+const agents = ['Topic Researcher','Fact-check Researcher','Competitor Researcher','AI Video Generator','Video Editor','Creative & Publishing'];
+
+async function request(path:string, init:RequestInit={}) {
+  const response = await fetch(API + path, { ...init, headers:{'Content-Type':'application/json', ...(init.headers||{})} });
+  const body = await response.json().catch(()=>({detail:response.statusText}));
+  if (!response.ok) throw new Error(body.detail || 'Request failed');
+  return body;
+}
+
+export default function Home() {
+  const [workflows,setWorkflows]=useState<Workflow[]>([]);
+  const [activeId,setActiveId]=useState('');
+  const [topic,setTopic]=useState('');
+  const [title,setTitle]=useState('');
+  const [script,setScript]=useState('');
+  const [videoIds,setVideoIds]=useState('');
+  const [channels,setChannels]=useState<Channel[]>([]);
+  const [channelId,setChannelId]=useState('');
+  const [publishText,setPublishText]=useState('');
+  const [scheduledAt,setScheduledAt]=useState('');
+  const [publishNow,setPublishNow]=useState(false);
+  const [busy,setBusy]=useState('');
+  const [error,setError]=useState('');
+  const [notice,setNotice]=useState('');
+  const [stats,setStats]=useState<any[]>([]);
+  const active=workflows.find(w=>w.id===activeId);
+  const load=useCallback(async()=>{try{const rows=await Promise.all([]); void rows; if(activeId){const w=await request('/workflows/'+activeId);setWorkflows(old=>[w,...old.filter(x=>x.id!==w.id)]);} }catch(e){setError((e as Error).message)}},[activeId]);
+  const refreshActive=useCallback(async()=>{if(!activeId)return;try{const w=await request('/workflows/'+activeId);setWorkflows(old=>[w,...old.filter(x=>x.id!==w.id)]);}catch(e){setError((e as Error).message)}},[activeId]);
+  useEffect(()=>{if(activeId){refreshActive();const t=setInterval(refreshActive,8000);return()=>clearInterval(t)}},[activeId,refreshActive]);
+  const run=async(label:string,fn:()=>Promise<void>)=>{setBusy(label);setError('');setNotice('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy('')}};
+  async function create(e:FormEvent){e.preventDefault();await run('create',async()=>{const w=await request('/workflows',{method:'POST',body:JSON.stringify({topic,config:{channel:'BioinfoBeats'}})});setWorkflows(old=>[w,...old]);setActiveId(w.id);setTopic('');setNotice('Workflow created. Queue the six-agent production pipeline when ready.');});}
+  async function queue(){if(!active)return;await run('queue',async()=>{await request('/workflows/'+active.id+'/queue',{method:'POST'});await refreshActive();setNotice('Six-agent pipeline queued.');});}
+  async function generateCreative(){if(!active)return;await run('creative',async()=>{await request('/workflows/'+active.id+'/creative',{method:'POST',body:JSON.stringify({title:title||active.topic,script,platforms:['YouTube','Instagram','LinkedIn']})});setNotice('Creative package queued. Refresh this workflow to see its result.');await refreshActive();});}
+  async function render(){if(!active)return;await run('render',async()=>{await request('/workflows/'+active.id+'/render',{method:'POST',body:JSON.stringify({title:title||active.topic,script,aspect:'vertical',scenes:[]})});setNotice('Video render queued.');await refreshActive();});}
+  async function loadChannels(){await run('channels',async()=>{const data=await request('/publishing/channels');const orgs=data?.account?.organizations||[];const list=orgs.flatMap((o:any)=>o.channels||[]);setChannels(list);if(list[0])setChannelId(list[0].id);});}
+  async function publish(){if(!active)return;await run('publish',async()=>{await request('/workflows/'+active.id+'/publishing/approve',{method:'POST',body:JSON.stringify({channel_id:channelId,text:publishText,approved:true,publish_now:publishNow,...(!publishNow?{scheduled_at:new Date(scheduledAt).toISOString()}: {})})});setNotice('Approved post submitted to Buffer.');await refreshActive();});}
+  async function fetchStats(){await run('stats',async()=>{const ids=videoIds.split(/[\s,]+/).filter(Boolean);const data=await request('/analytics/youtube/videos',{method:'POST',body:JSON.stringify({video_ids:ids})});setStats(data.videos||[]);});}
+  const outputs=useMemo(()=>active?.agent_outputs||[],[active]);
+  return <main className="appShell">
+    <aside className="sidebar"><a className="brand" href="#"><span className="brandMark">B</span><span>BioinfoBeats<small>AI STUDIO</small></span></a>
+      <div className="sideLabel">WORKSPACE</div><a className="navItem active" href="#overview">◫ <span>Overview</span></a><a className="navItem" href="#production">✳ <span>Production</span></a><a className="navItem" href="#publishing">↗ <span>Publishing</span></a><a className="navItem" href="#analytics">▥ <span>Analytics</span></a>
+      <div className="sideBottom"><span className="onlineDot"/> API WORKSPACE<br/><small>Connect provider keys in server .env</small></div>
+    </aside>
+    <section className="mainArea"><header className="topbar"><div><span className="crumb">WORKSPACE /</span> OVERVIEW</div><div className="topRight"><span className="liveDot"/> SYSTEM READY <button className="ghost" onClick={()=>activeId?refreshActive():setNotice('Select or create a workflow to begin.')}>↻ Refresh</button></div></header>
+      <div className="content">
+        <section id="overview" className="welcome"><div><p className="eyebrow">CREATOR OPERATING SYSTEM</p><h1>Make knowledge<br/><em>move the world.</em></h1><p className="sub">Research, produce, review and publish BioinfoBeats content from one workspace.</p></div><div className="heroOrb"><div className="orbCore">B<span>•</span></div><i/><b/></div></section>
+        {error&&<div className="alert error">{error}</div>}{notice&&<div className="alert success">{notice}</div>}
+        <section className="metrics"><div className="metric"><span>WORKFLOWS</span><b>{workflows.length}</b><small>Loaded in this session</small></div><div className="metric"><span>AI AGENTS</span><b>06</b><small>Orchestrated pipeline</small></div><div className="metric"><span>ACTIVE WORKFLOW</span><b className="metricStatus">{active?.status||'—'}</b><small>{active?active.topic:'No selection'}</small></div><div className="metric"><span>PUBLISHING</span><b>{active?.config?.publishing?.status||'Review'}</b><small>Human approval required</small></div></section>
+        <div className="sectionTitle"><div><p className="eyebrow">01 / START HERE</p><h2>Create a workflow</h2></div><span className="hint">IDEA → PRODUCTION → DISTRIBUTION</span></div>
+        <section className="panel createPanel"><form onSubmit={create}><label>What are we creating today?</label><div className="inlineForm"><input value={topic} onChange={e=>setTopic(e.target.value)} placeholder="e.g. BLAST explained in 5 minutes" minLength={3} required/><button className="primaryBtn" disabled={!!busy}>{busy==='create'?'Creating…':'＋ Create workflow'}</button></div></form></section>
+        <div className="workspaceGrid">
+          <section className="panel workflowPanel"><div className="panelHead"><div><p className="eyebrow">YOUR PROJECTS</p><h3>Workflow library</h3></div><span className="pill">{workflows.length} ITEMS</span></div>
+            {workflows.length===0?<div className="empty">Your next video starts with an idea.<small>Create a workflow above to begin.</small></div>:<div className="workflowList">{workflows.map(w=><button key={w.id} className={'workflowRow '+(w.id===activeId?'selected':'')} onClick={()=>setActiveId(w.id)}><span className="workflowIcon">▶</span><span className="workflowInfo"><b>{w.topic}</b><small>{new Date(w.created_at).toLocaleString()}</small></span><span className="pill">{w.status}</span></button>)}</div>}
+          </section>
+          <section className="panel agentsPanel"><div className="panelHead"><div><p className="eyebrow">AUTONOMOUS PRODUCTION</p><h3>Six-agent team</h3></div><span className="pill mint">READY</span></div><div className="agentList">{agents.map((a,i)=><div className="agentRow" key={a}><span className="agentNum">0{i+1}</span><span>{a}</span><i>●</i></div>)}</div><button className="primaryBtn wide" disabled={!active||!!busy} onClick={queue}>{busy==='queue'?'Queueing…':'Run production pipeline ↗'}</button><small className="micro">Generates research and draft assets. Does not publish.</small></section>
+        </div>
+        {active&&<><div className="sectionTitle" id="production"><div><p className="eyebrow">02 / BUILD</p><h2>Production desk</h2></div><span className="hint">WORKFLOW · {active.id.slice(0,8)}</span></div>
+          <section className="panel productionPanel"><div className="panelHead"><div><p className="eyebrow">SCRIPT & VIDEO</p><h3>{active.topic}</h3></div><span className="pill">{active.status}</span></div><div className="twoFields"><div><label>Video title</label><input value={title} onChange={e=>setTitle(e.target.value)} placeholder={active.topic}/></div><div><label>Format</label><div className="formatChip">▯ Vertical · 9:16</div></div></div><label>Approved script / narration</label><textarea rows={7} value={script} onChange={e=>setScript(e.target.value)} placeholder="Paste or write the reviewed narration script here. Minimum 30 characters for production jobs."/><div className="buttonRow"><button className="secondaryBtn" disabled={!script||script.length<30||!!busy} onClick={generateCreative}>{busy==='creative'?'Queueing…':'✦ Generate thumbnails & social copy'}</button><button className="primaryBtn" disabled={!script||script.length<30||!!busy} onClick={render}>{busy==='render'?'Queueing…':'▶ Render video'}</button></div>
+          <div className="resultGrid"><div><h4>Agent outputs</h4>{outputs.length?outputs.map((o:any,i)=><details key={i}><summary>{o.agent||o.name||'Agent '+(i+1)}</summary><pre>{JSON.stringify(o,null,2)}</pre></details>):<p className="mutedText">Agent results will appear here after the pipeline runs.</p>}</div><div><h4>Creative package</h4>{active.config?.creative_package?<pre>{JSON.stringify(active.config.creative_package,null,2)}</pre>:<p className="mutedText">Thumbnail concepts and platform copy appear after generation.</p>}<h4>Rendered video</h4>{active.config?.video_render?.video_url?<a className="textLink" href={active.config.video_render.video_url} target="_blank">Open rendered MP4 ↗</a>:<p className="mutedText">{active.config?.video_render?.status||'No render queued yet.'}</p>}</div></div></section>
+          <div className="sectionTitle" id="publishing"><div><p className="eyebrow">03 / DISTRIBUTE</p><h2>Publishing approval</h2></div><span className="hint">NOTHING POSTS WITHOUT YOUR APPROVAL</span></div>
+          <section className="panel"><div className="panelHead"><div><p className="eyebrow">BUFFER CONNECTION</p><h3>Review and schedule</h3></div><button className="secondaryBtn" onClick={loadChannels} disabled={!!busy}>↻ Load channels</button></div><label>Channel</label><select value={channelId} onChange={e=>setChannelId(e.target.value)}><option value="">Choose a connected Buffer channel</option>{channels.map(c=><option key={c.id} value={c.id}>{c.name} · {c.service}</option>)}</select><label>Post copy</label><textarea rows={4} value={publishText} onChange={e=>setPublishText(e.target.value)} placeholder="Review and paste final post copy…"/><div className="publishControls"><label className="check"><input type="checkbox" checked={publishNow} onChange={e=>setPublishNow(e.target.checked)}/> Publish immediately</label>{!publishNow&&<input type="datetime-local" value={scheduledAt} onChange={e=>setScheduledAt(e.target.value)}/>}<button className="primaryBtn" disabled={!channelId||!publishText||(!publishNow&&!scheduledAt)||!!busy} onClick={publish}>I approve — submit to Buffer</button></div>{active.config?.publishing&&<p className="mutedText">Latest Buffer status: {active.config.publishing.status} · {active.config.publishing.external_link||active.config.publishing.post_id}</p>}</section>
+        </>}
+        <div className="sectionTitle" id="analytics"><div><p className="eyebrow">04 / LEARN & IMPROVE</p><h2>Performance intelligence</h2></div><span className="hint">PUBLIC YOUTUBE METRICS</span></div>
+        <section className="panel"><label>YouTube video IDs</label><div className="inlineForm"><input value={videoIds} onChange={e=>setVideoIds(e.target.value)} placeholder="Paste one or more video IDs, separated by commas"/><button className="primaryBtn" onClick={fetchStats} disabled={!videoIds.trim()||!!busy}>{busy==='stats'?'Fetching…':'Fetch performance'}</button></div>{stats.length>0&&<div className="statsGrid">{stats.map(v=><div className="statCard" key={v.video_id}><b>{v.title}</b><div><strong>{Number(v.views).toLocaleString()}</strong><small> views</small></div><p>{Number(v.likes).toLocaleString()} likes · {Number(v.comments).toLocaleString()} comments</p><span className="pill mint">{v.engagement_rate}% engagement</span></div>)}</div>}<p className="micro">Public counts only. Private watch time and retention require owner-authorized YouTube Analytics access.</p></section>
+        <footer><span>© 2026 BIOINFOBEATS AI STUDIO</span><span>BUILT FOR THE NEXT IDEA.</span></footer>
+      </div>
+    </section>
+  </main>;
+}

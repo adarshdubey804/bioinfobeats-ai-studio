@@ -1,40 +1,35 @@
 # BioinfoBeats AI Studio
 
-AI-assisted content production studio with six-agent orchestration, evidence collection, AI scene artwork, narrated FFmpeg rendering, creative assets, approval-gated Buffer publishing and YouTube analytics.
+AI-assisted content production studio with six-agent orchestration, research, AI scene artwork, narrated FFmpeg rendering, creative assets, approval-gated Buffer publishing, YouTube analytics and a production dashboard.
 
 ## Platform
-- Next.js + TypeScript dashboard
+- Next.js + TypeScript interactive dashboard
 - FastAPI, PostgreSQL, SQLAlchemy, Alembic
 - Redis + Celery background workers
-- JWT registration/login
+- JWT registration/login API foundation
 - Six-stage AI pipeline, Tavily web research and YouTube Data API search
 - ElevenLabs narration, OpenAI scene and thumbnail generation, subtitles and FFmpeg MP4 export
 - Buffer GraphQL channel lookup and explicit approval-gated scheduling
-- YouTube public video statistics and owner-authorized channel analytics
-- AI performance summaries grounded in submitted metrics
+- YouTube public video statistics, owner-authorized channel analytics and AI performance insights
 
 ## Run
-Copy .env.example to .env, configure credentials, then run docker compose up --build.
+Copy .env.example to .env, configure server-side credentials, then run docker compose up --build.
 Dashboard: http://localhost:3000. API docs: http://localhost:8000/docs.
 
+The frontend reads NEXT_PUBLIC_API_BASE_URL (default http://localhost:8000/api/v1). For a deployed frontend set it to the public API base URL and rebuild the frontend image.
+
+## Dashboard
+Create a workflow, queue the six-agent pipeline, enter reviewed narration, queue creative assets or an MP4 render, load Buffer channels and explicitly approve a post, and fetch public YouTube statistics by video ID. The selected workflow refreshes periodically while open.
+
 ## Provider keys
-Configure LLM_API_KEY, TAVILY_API_KEY, YOUTUBE_API_KEY, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, OPENAI_API_KEY and BUFFER_ACCESS_TOKEN as needed. Never commit real secrets.
-
-## Video and creative assets
-POST /api/v1/workflows/{workflow_id}/render with title, script, aspect and optional scenes. POST /api/v1/workflows/{workflow_id}/creative with title, script and platforms.
-
-## Buffer publishing
-GET /api/v1/publishing/channels for connected channels. POST /api/v1/workflows/{workflow_id}/publishing/approve with approved=true and a future timezone-aware scheduled_at, or publish_now=true. Publishing remains an explicit user-approved action.
+Configure LLM_API_KEY, TAVILY_API_KEY, YOUTUBE_API_KEY, YOUTUBE_OAUTH_ACCESS_TOKEN, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, OPENAI_API_KEY and BUFFER_ACCESS_TOKEN as needed. Never commit real secrets.
 
 ## YouTube analytics
-- POST /api/v1/analytics/youtube/videos with {"video_ids":["VIDEO_ID"]} retrieves public views, likes, comments, title, publish date and duration. Engagement rate is calculated as (likes + comments) / views × 100.
-- POST /api/v1/analytics/youtube/channel with {"start_date":"2026-11-01","end_date":"2026-11-22"} retrieves owner-only channel views, likes, comments, watch time, average view duration, average view percentage and subscribers gained.
-- POST /api/v1/analytics/insights with {"topic":"Bioinformatics education","videos":[...]} generates cautious recommendations based only on supplied metrics.
+- POST /api/v1/analytics/youtube/videos with {"video_ids":["VIDEO_ID"]} retrieves public views, likes, comments, title, publish date and duration.
+- POST /api/v1/analytics/youtube/channel with start_date and end_date retrieves owner-only watch-time and retention metrics using an OAuth access token with YouTube Analytics read-only scope.
+- POST /api/v1/analytics/insights analyzes supplied metrics.
 
-Public video statistics use the YouTube Data API key. Owner analytics requires an OAuth access token with the Google YouTube Analytics read-only scope. The current version accepts a configured access token; it does not yet implement OAuth consent, refresh-token storage, automatic scheduled sync, or Instagram/LinkedIn analytics. Public statistics do not expose private watch-time or retention data.
-
-## Research
-POST /api/v1/research/web or /api/v1/research/youtube with {"query":"BLAST bioinformatics tutorial","max_results":5}.
+Public statistics do not expose private watch-time or retention data. OAuth consent and refresh-token management are not yet built into this version.
 
 ## Tests
 cd backend && pip install -r requirements.txt && pytest
