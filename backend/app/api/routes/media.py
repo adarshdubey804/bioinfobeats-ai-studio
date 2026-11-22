@@ -2,6 +2,7 @@ import re
 import uuid
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
@@ -44,7 +45,7 @@ def _matches_signature(content: bytes, media_type: str, content_type: str) -> bo
 def _item(asset: MediaAsset):
     return {"id": asset.id, "filename": asset.filename, "media_type": asset.media_type,
             "content_type": asset.content_type, "size_bytes": asset.size_bytes,
-            "created_at": asset.created_at.isoformat(), "url": f"/media/library/{asset.user_id}/{asset.storage_name}"}
+            "created_at": asset.created_at.isoformat(), "url": f"/api/v1/media/library/{asset.id}/file"}
 
 
 @router.get("/media/library", tags=["media-library"])
@@ -95,6 +96,19 @@ async def upload_asset(file: UploadFile = File(...), media_type: str = Query(...
         destination.unlink(missing_ok=True)
         raise
     return _item(asset)
+
+
+@router.get("/media/library/{asset_id}/file", tags=["media-library"])
+def get_asset_file(asset_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    asset = db.scalar(select(MediaAsset).where(MediaAsset.id == asset_id, MediaAsset.user_id == user.id))
+    if asset is None:
+        raise HTTPException(404, "Media asset not found.")
+    root = Path(settings.media_storage_dir).resolve()
+    folder = (root / "library" / str(user.id)).resolve()
+    path = (folder / asset.storage_name).resolve()
+    if root not in folder.parents or folder not in path.parents or not path.is_file():
+        raise HTTPException(404, "Media asset file not found.")
+    return FileResponse(path, media_type=asset.content_type, filename=asset.filename, headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @router.delete("/media/library/{asset_id}", tags=["media-library"])

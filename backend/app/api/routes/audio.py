@@ -75,7 +75,7 @@ def create_voice_preview(payload: VoicePreviewRequest, user: User = Depends(get_
     if not response.content or not (response.content.startswith(b"ID3") or (len(response.content) > 1 and response.content[0] == 0xFF and response.content[1] & 0xE0 == 0xE0)):
         raise HTTPException(502, "ElevenLabs returned an invalid audio preview.")
     filename = uuid4().hex + ".mp3"
-    root = Path(settings.media_storage_dir).resolve()
+    root = Path(settings.private_media_storage_dir).resolve()
     folder = (root / "voice_previews" / str(user.id)).resolve()
     if root not in folder.parents:
         raise HTTPException(400, "Invalid preview storage path.")

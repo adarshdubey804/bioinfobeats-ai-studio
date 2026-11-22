@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     motion_poll_interval_seconds: int = 4
     render_timeout_seconds: int = 180
     media_storage_dir: str = '/data/media'
+    private_media_storage_dir: str = '/data/private-media'
     ffmpeg_binary: str = 'ffmpeg'
     ffprobe_binary: str = 'ffprobe'
     buffer_access_token: str = ''

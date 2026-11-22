@@ -87,7 +87,7 @@ def _phylogeny(d,t,payload):
 
 def create_animation(kind,payload):
     title=str(payload.get("title") or kind.replace("_"," ").title())[:90]
-    media=Path(settings.media_storage_dir).resolve();folder=(media/"scientific-animations").resolve();folder.mkdir(parents=True,exist_ok=True)
+    media=(Path(settings.media_storage_dir).resolve()/"public").resolve();folder=(media/"scientific-animations").resolve();folder.mkdir(parents=True,exist_ok=True)
     job=uuid.uuid4().hex;frames=folder/job;frames.mkdir()
     total=FPS*SECONDS
     draw_fn={"dna":_dna,"central_dogma":_central,"pathway":lambda d,t:_pathway(d,t,payload),"alignment":lambda d,t:_alignment(d,t,payload),"phylogeny":lambda d,t:_phylogeny(d,t,payload)}.get(kind)

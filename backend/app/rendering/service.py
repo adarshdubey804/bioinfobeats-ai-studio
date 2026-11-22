@@ -138,7 +138,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     if not settings.elevenlabs_api_key:
         raise RenderConfigurationError("Configure ELEVENLABS_API_KEY to render narration.")
     render_id = _safe_id(render_id)
-    root = Path(settings.media_storage_dir).resolve()
+    root = (Path(settings.media_storage_dir).resolve() / 'public').resolve()
     job_dir = (root / render_id).resolve()
     if root not in job_dir.parents:
         raise ValueError("Invalid output directory")

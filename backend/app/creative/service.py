@@ -14,7 +14,7 @@ def create_creative_package(workflow_id: str, topic: str, title: str, script: st
     concepts = brief.get("thumbnail_concepts", [])
     if len(concepts) != 3:
         raise ValueError("Creative agent must return exactly three thumbnail concepts.")
-    output_dir = Path(settings.media_storage_dir).resolve() / workflow_id / "creative"
+    output_dir = Path(settings.media_storage_dir).resolve() / "public" / workflow_id / "creative"
     output_dir.mkdir(parents=True, exist_ok=True)
     thumbnails = []
     for index, concept in enumerate(concepts, 1):

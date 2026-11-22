@@ -85,7 +85,7 @@ def generate_visual(kind:str,payload:dict)->dict:
     elif kind=="alignment": root=alignment(title,payload.get("sequences",[]))
     elif kind=="phylogeny": root=tree(title,payload.get("labels",[]))
     else: raise ValueError("Unsupported visual kind.")
-    media=Path(settings.media_storage_dir).resolve()
+    media=(Path(settings.media_storage_dir).resolve()/"public").resolve()
     folder=(media/"scientific-assets").resolve();folder.mkdir(parents=True,exist_ok=True)
     name=uuid.uuid4().hex+".svg";path=folder/name
     path.write_bytes(tostring(root,encoding="utf-8",xml_declaration=True))

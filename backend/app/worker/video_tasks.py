@@ -28,7 +28,7 @@ def _persist_progress(workflow_id: str, render_id: str, progress: dict) -> None:
 
 def _prepare_assets(db, user_id, render_id, request):
     root = Path(settings.media_storage_dir).resolve()
-    job_dir = (root / render_id).resolve()
+    job_dir = (root / 'public' / render_id).resolve()
     if root not in job_dir.parents:
         raise ValueError("Invalid render output path.")
     job_dir.mkdir(parents=True, exist_ok=True)
