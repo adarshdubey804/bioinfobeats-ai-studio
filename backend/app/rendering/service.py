@@ -78,7 +78,7 @@ def _caption_filter(srt_path: Path, width: int) -> str:
     font_size = 24 if width < 1500 else 32
     return f"subtitles='{safe}':force_style='FontName=DejaVu Sans,FontSize={font_size},PrimaryColour=&H00FFFFFF,OutlineColour=&H00101820,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=90'"
 
-def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto", music_volume: float = 0.12) -> str:
+def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto", music_volume: float = 0.12, scene_asset_paths: dict[int, str] | None = None, brand_logo_path: str | None = None) -> str:
     if not settings.elevenlabs_api_key or not settings.elevenlabs_voice_id:
         raise RenderConfigurationError("Configure ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to render narration.")
     render_id = _safe_id(render_id)
@@ -123,32 +123,46 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
         if overlay:
             escaped = _drawtext_escape(overlay)
             overlay_filter = f",drawtext=text='{escaped}':fontcolor=white:fontsize={max(28,width//28)}:borderw=2:bordercolor=black@0.75:x=(w-text_w)/2:y=h*0.78"
+        prompt = (
             "Create a scientifically accurate cinematic educational science video shot. "
             "No text, labels, subtitles, logos or watermark. Deep navy and electric cyan visual identity. "
             "Use coherent natural camera motion, stable geometry, physically plausible movement, "
             "clean scientific composition and no morphing of molecular structures. "
             + str(scene["prompt"])
         )
-        use_motion = visual_mode == "ai" or (visual_mode == "auto" and bool(settings.replicate_api_token and settings.replicate_video_model_version))
+        selected_asset = Path(scene_asset_paths[index]).resolve() if scene_asset_paths and index in scene_asset_paths else None
+        if selected_asset and not selected_asset.is_file():
+            raise ValueError("A selected scene media file is missing.")
+        is_video_asset = bool(selected_asset and selected_asset.suffix.lower() in {".mp4", ".webm"})
+        use_motion = is_video_asset or (not selected_asset and (visual_mode == "ai" or (visual_mode == "auto" and bool(settings.replicate_api_token and settings.replicate_video_model_version))))
         if use_motion:
             motion_path = job_dir / f"motion-{index + 1:02}.mp4"
-            generate_motion_clip(prompt, motion_path, aspect, duration)
-            _run([
-                settings.ffmpeg_binary, "-y", "-i", str(motion_path), "-t", f"{duration:.3f}",
-                "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},fps=30{overlay_filter},format=yuv420p" + (f",fade=t=in:st=0:d=0.25,fade=t=out:st={max(0,duration-0.25):.3f}:d=0.25" if transition == "fade" else ""),
-                "-an", "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-                "-t", f"{duration:.3f}", str(segment_path),
-            ])
+            if is_video_asset:
+                motion_path = selected_asset
+            else:
+                generate_motion_clip(prompt, motion_path, aspect, duration)
+            source_args = ["-i", str(motion_path)]
+            video_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},fps=30{overlay_filter},format=yuv420p"
         else:
-            image_path = job_dir / f"scene-{index + 1:02}.png"
-            generate_scene_image(prompt, image_path, aspect)
+            image_path = selected_asset or (job_dir / f"scene-{index + 1:02}.png")
+            if not selected_asset:
+                generate_scene_image(prompt, image_path, aspect)
             zoom = "min(zoom+0.00065,1.08)" if index % 2 == 0 else "if(lte(zoom,1.0),1.08,max(1.0,zoom-0.00065))"
-            _run([
-                settings.ffmpeg_binary, "-y", "-loop", "1", "-framerate", "30", "-i", str(image_path),
-                "-t", f"{duration:.3f}",
-                "-vf", f"scale={width*2}:{height*2}:force_original_aspect_ratio=increase,crop={width*2}:{height*2},zoompan=z='{zoom}':d=1:s={width}x{height}:fps=30{overlay_filter},format=yuv420p" + (f",fade=t=in:st=0:d=0.25,fade=t=out:st={max(0,duration-0.25):.3f}:d=0.25" if transition == "fade" else ""),
-                "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-an", "-pix_fmt", "yuv420p", str(segment_path),
-            ])
+            source_args = ["-loop", "1", "-framerate", "30", "-i", str(image_path)]
+            video_filter = f"scale={width*2}:{height*2}:force_original_aspect_ratio=increase,crop={width*2}:{height*2},zoompan=z='{zoom}':d=1:s={width}x{height}:fps=30{overlay_filter},format=yuv420p"
+        if transition == "fade":
+            video_filter += f",fade=t=in:st=0:d=0.25,fade=t=out:st={max(0,duration-0.25):.3f}:d=0.25"
+        command = [settings.ffmpeg_binary, "-y"] + source_args
+        if brand_logo_path:
+            logo = Path(brand_logo_path).resolve()
+            if not logo.is_file():
+                raise ValueError("Selected brand logo file is missing.")
+            logo_filter = f"[1:v]scale={max(60,width//8)}:-1[brand];[0:v]{video_filter}[base];[base][brand]overlay=W-w-32:32:format=auto[vout]"
+            command += ["-loop", "1", "-i", str(logo), "-filter_complex", logo_filter, "-map", "[vout]"]
+        else:
+            command += ["-vf", video_filter]
+        command += ["-t", f"{duration:.3f}", "-an", "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", str(segment_path)]
+        _run(command)
         segment_paths.append(segment_path)
 
     concat_file = job_dir / "scenes.txt"

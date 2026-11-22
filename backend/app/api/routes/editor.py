@@ -17,6 +17,7 @@ class SceneEdit(BaseModel):
     transition: str = Field(default="fade",pattern="^(cut|fade)$")
     duration_seconds: float | None = Field(default=None,ge=1,le=180)
     overlay_text: str = Field(default="",max_length=90)
+    asset_id: str | None = None
 
 class StoryboardEdit(BaseModel):
     scenes: list[SceneEdit] = Field(min_length=2,max_length=8)
