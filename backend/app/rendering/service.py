@@ -70,6 +70,9 @@ def _scene_durations(scenes: list[dict], script: str, duration: float) -> list[f
     result[-1] += duration - sum(result)
     return result
 
+def _drawtext_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'").replace("%", "\\%").replace(",", "\\,")
+
 def _caption_filter(srt_path: Path, width: int) -> str:
     safe = srt_path.as_posix().replace(":", "\\:")
     font_size = 24 if width < 1500 else 32
@@ -99,6 +102,8 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     scene_items = scenes or build_storyboard(script, title)
     if len(scene_items) > 8:
         raise ValueError("A maximum of 8 generated scenes is supported per render.")
+    if not 0 <= music_volume <= 0.3:
+        raise ValueError("Music volume must be between 0 and 0.3.")
     durations = _scene_durations(scene_items, script, audio_duration)
     cursor = 0.0
     timeline = []
@@ -110,7 +115,14 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     segment_paths = []
     for index, (scene, duration) in enumerate(zip(scene_items, durations)):
         segment_path = job_dir / f"segment-{index + 1:02}.mp4"
-        prompt = (
+        transition = scene.get("transition", "fade")
+        if transition not in {"fade", "cut"}:
+            raise ValueError("Scene transition must be fade or cut.")
+        overlay = str(scene.get("overlay_text") or "").strip()[:90]
+        overlay_filter = ""
+        if overlay:
+            escaped = _drawtext_escape(overlay)
+            overlay_filter = f",drawtext=text='{escaped}':fontcolor=white:fontsize={max(28,width//28)}:borderw=2:bordercolor=black@0.75:x=(w-text_w)/2:y=h*0.78"
             "Create a scientifically accurate cinematic educational science video shot. "
             "No text, labels, subtitles, logos or watermark. Deep navy and electric cyan visual identity. "
             "Use coherent natural camera motion, stable geometry, physically plausible movement, "
@@ -123,7 +135,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
             generate_motion_clip(prompt, motion_path, aspect, duration)
             _run([
                 settings.ffmpeg_binary, "-y", "-i", str(motion_path), "-t", f"{duration:.3f}",
-                "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},fps=30,format=yuv420p",
+                "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},fps=30{overlay_filter},format=yuv420p" + (f",fade=t=in:st=0:d=0.25,fade=t=out:st={max(0,duration-0.25):.3f}:d=0.25" if transition == "fade" else ""),
                 "-an", "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
                 "-t", f"{duration:.3f}", str(segment_path),
             ])
@@ -134,7 +146,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
             _run([
                 settings.ffmpeg_binary, "-y", "-loop", "1", "-framerate", "30", "-i", str(image_path),
                 "-t", f"{duration:.3f}",
-                "-vf", f"scale={width*2}:{height*2}:force_original_aspect_ratio=increase,crop={width*2}:{height*2},zoompan=z='{zoom}':d=1:s={width}x{height}:fps=30,format=yuv420p,fade=t=in:st=0:d=0.35:alpha=0,fade=t=out:st={max(0,duration-0.35):.3f}:d=0.35:alpha=0",
+                "-vf", f"scale={width*2}:{height*2}:force_original_aspect_ratio=increase,crop={width*2}:{height*2},zoompan=z='{zoom}':d=1:s={width}x{height}:fps=30{overlay_filter},format=yuv420p" + (f",fade=t=in:st=0:d=0.25,fade=t=out:st={max(0,duration-0.25):.3f}:d=0.25" if transition == "fade" else ""),
                 "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-an", "-pix_fmt", "yuv420p", str(segment_path),
             ])
         segment_paths.append(segment_path)
@@ -150,8 +162,6 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
         music_path = job_dir / music_filename
         if not music_path.is_file():
             raise ValueError("Requested music file was not found in this render's media folder.")
-    if not 0 <= music_volume <= 0.3:
-        raise ValueError("Music volume must be between 0 and 0.3.")
     caption_filter = _caption_filter(srt_path, width)
     command = [settings.ffmpeg_binary, "-y", "-i", str(visual_path), "-i", str(audio_path)]
     if music_path:

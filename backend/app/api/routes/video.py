@@ -14,6 +14,7 @@ class SceneRequest(BaseModel):
     narration_excerpt: str = Field(default="", max_length=1200)
     transition: str = Field(default="fade", pattern="^(cut|fade)$")
     duration_seconds: float | None = Field(default=None, ge=1, le=180)
+    overlay_text: str = Field(default="", max_length=90)
 
 class VideoRenderRequest(BaseModel):
     title: str = Field(min_length=3, max_length=120)
