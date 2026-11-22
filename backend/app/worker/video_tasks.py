@@ -17,7 +17,7 @@ def render_workflow_video(self, workflow_id: str, render_id: str):
         item.config = {**config, "video_render": {**config["video_render"], "status": "rendering"}}
         db.commit()
         try:
-            url = render_video(render_id, request["title"], request["script"], request["aspect"])
+            url = render_video(render_id, request["title"], request["script"], request["aspect"], request.get("scenes"), request.get("music_filename"))
             item.config = {**(item.config or {}), "video_render": {**(item.config or {})["video_render"], "status": "ready_for_review", "url": url}}
             db.commit()
             return {"workflow_id": workflow_id, "status": "ready_for_review", "url": url}

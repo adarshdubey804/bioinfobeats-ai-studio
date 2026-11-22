@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ''
     elevenlabs_voice_id: str = ''
     elevenlabs_model_id: str = 'eleven_multilingual_v2'
+    openai_api_key: str = ''
+    openai_base_url: str = 'https://api.openai.com/v1'
+    openai_image_model: str = 'gpt-image-2'
     render_timeout_seconds: int = 180
     media_storage_dir: str = '/data/media'
     ffmpeg_binary: str = 'ffmpeg'
