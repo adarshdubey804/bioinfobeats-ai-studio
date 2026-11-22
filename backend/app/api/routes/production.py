@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.user import User
+from app.models.job_run import JobRun
 from app.api.deps import get_current_user, get_owned_workflow
 from app.worker.production_tasks import assemble_approved_production
 from app.api.routes.video import SceneRequest
@@ -42,6 +43,11 @@ def assemble_production(workflow_id: str, payload: AssemblyRequest, db: Session 
     render_id=str(uuid4())
     job={"id":str(uuid4()),"render_id":render_id,"status":"queued","step":"queued","aspect":payload.aspect,"visual_mode":payload.visual_mode,"created_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}
     item.config={**config,"approved_title":item.topic,"production_assembly":job,"video_render_request":payload.model_dump(),"video_render":{"id":render_id,"status":"queued","title":item.topic,"aspect":payload.aspect}}
+    run = JobRun(id=str(uuid4()), workflow_id=item.id, task_type="production_assembly", status="queued", progress={"stage": "queued", "percent": 0})
+    db.add(run)
     db.commit()
-    assemble_approved_production.delay(workflow_id,render_id)
-    return {"workflow_id":workflow_id,**job,"message":"Approved script queued for narration, storyboard, video rendering, thumbnails and social copy. Review all assets before publishing."}
+    db.refresh(run)
+    result = assemble_approved_production.delay(workflow_id, render_id, run.id)
+    run.celery_task_id = result.id
+    db.commit()
+    return {"workflow_id":workflow_id,"job_run_id":run.id,**job,"message":"Approved script queued for narration, storyboard, video rendering, thumbnails and social copy. Review all assets before publishing."}
