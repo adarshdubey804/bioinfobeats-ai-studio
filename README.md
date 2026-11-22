@@ -64,3 +64,7 @@ Authenticated POST /api/v1/visuals/animate/{kind} generates five-second 960×540
 
 ## Professional timeline controls (Phase 22)
 The storyboard editor now includes a proportional scene timeline, narration/music track indicators, per-scene duration weights and background music gain. Scene duration values are relative weights that are normalized to the actual generated narration duration, so the final video remains synchronized to the voice track. Set music_volume between 0 and 0.3 in POST /api/v1/workflows/{workflow_id}/render; the dashboard exposes this control. Scene timing and gain are saved with the storyboard and passed into a new render. Transition choices remain metadata only in this phase; crossfades, drag-and-drop reordering, waveform editing, and independent audio tracks are not yet implemented. 
+
+
+## Advanced editing and export controls (Phase 23)
+The storyboard editor supports moving scenes earlier/later, per-scene text overlays/lower-thirds, duration weights, and cut/fade transition choices. During rendering, overlay text is burned into each scene and fade transitions fade that scene at its boundaries; cut leaves boundaries hard. Select vertical (9:16) for Shorts/Reels or landscape (16:9) for YouTube long-form. Save the storyboard before queueing a render. This is not yet a drag-and-drop NLE: there is no waveform, multi-layer compositing, animated lower-third library, or true crossfade overlap. The renderer outputs H.264/AAC MP4. 
