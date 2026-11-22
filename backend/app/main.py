@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
-from app.api.routes import health, agents, workflows, auth, research, video, creative, publishing, analytics, oauth, ideas, production, editor, visuals, animation, media
+from app.api.routes import health, agents, workflows, auth, research, video, creative, publishing, analytics, oauth, ideas, production, editor, visuals, animation, media, audio
 
 Path(settings.media_storage_dir).mkdir(parents=True, exist_ok=True)
 app = FastAPI(title=settings.app_name, version='0.8.0', description='AI-assisted social content production API')
@@ -24,4 +24,5 @@ app.include_router(editor.router, prefix='/api/v1')
 app.include_router(visuals.router, prefix='/api/v1')
 app.include_router(animation.router, prefix='/api/v1')
 app.include_router(media.router, prefix='/api/v1')
+app.include_router(audio.router, prefix='/api/v1')
 app.mount('/media', StaticFiles(directory=settings.media_storage_dir), name='media')
