@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 import httpx
+from app.api.deps import get_current_user
 from app.research.providers import web_search, youtube_search, ResearchConfigurationError
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 class ResearchRequest(BaseModel):
     query: str = Field(min_length=3, max_length=500)
@@ -11,18 +12,12 @@ class ResearchRequest(BaseModel):
 
 @router.post('/research/web', tags=['research'])
 def search_web(payload: ResearchRequest):
-    try:
-        return web_search(payload.query, payload.max_results)
-    except ResearchConfigurationError as exc:
-        raise HTTPException(503, str(exc))
-    except httpx.HTTPError as exc:
-        raise HTTPException(502, f'Web research provider error: {exc}')
+    try: return web_search(payload.query, payload.max_results)
+    except ResearchConfigurationError as exc: raise HTTPException(503, str(exc))
+    except httpx.HTTPError as exc: raise HTTPException(502, f'Web research provider error: {exc}')
 
 @router.post('/research/youtube', tags=['research'])
 def search_youtube(payload: ResearchRequest):
-    try:
-        return youtube_search(payload.query, payload.max_results)
-    except ResearchConfigurationError as exc:
-        raise HTTPException(503, str(exc))
-    except httpx.HTTPError as exc:
-        raise HTTPException(502, f'YouTube research provider error: {exc}')
+    try: return youtube_search(payload.query, payload.max_results)
+    except ResearchConfigurationError as exc: raise HTTPException(503, str(exc))
+    except httpx.HTTPError as exc: raise HTTPException(502, f'YouTube research provider error: {exc}')

@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 import httpx
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.workflow import Workflow
+from app.models.user import User
+from app.api.deps import get_current_user, get_owned_workflow
 from app.publishing.buffer import list_channels, create_post, BufferAPIError, BufferConfigurationError
 
 router = APIRouter()
@@ -18,7 +19,7 @@ class PublishApproval(BaseModel):
     publish_now: bool = False
 
 @router.get("/publishing/channels", tags=["publishing"])
-def channels():
+def channels(user: User = Depends(get_current_user)):
     try:
         return list_channels()
     except BufferConfigurationError as exc:
@@ -27,10 +28,8 @@ def channels():
         raise HTTPException(502, f"Buffer channel lookup failed: {exc}")
 
 @router.post("/workflows/{workflow_id}/publishing/approve", tags=["publishing"])
-def approve_and_schedule(workflow_id: str, payload: PublishApproval, db: Session = Depends(get_db)):
-    item = db.get(Workflow, workflow_id)
-    if not item:
-        raise HTTPException(404, "Workflow not found")
+def approve_and_schedule(workflow_id: str, payload: PublishApproval, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    item = get_owned_workflow(workflow_id, user, db)
     if payload.approved is not True:
         raise HTTPException(400, "Explicit approval is required before sending content to Buffer.")
     if payload.publish_now and payload.scheduled_at is not None:
@@ -54,15 +53,7 @@ def approve_and_schedule(workflow_id: str, payload: PublishApproval, db: Session
         raise HTTPException(503, str(exc))
     except (BufferAPIError, httpx.HTTPError) as exc:
         raise HTTPException(502, f"Buffer publish request failed: {exc}")
-    record = {
-        "status": post.get("status", "submitted"),
-        "post_id": post.get("id"),
-        "channel_id": payload.channel_id,
-        "due_at": post.get("dueAt") or due_at,
-        "external_link": post.get("externalLink"),
-        "approved_at": datetime.now(timezone.utc).isoformat(),
-        "mode": "shareNow" if payload.publish_now else "customScheduled",
-    }
+    record = {"status": post.get("status", "submitted"), "post_id": post.get("id"), "channel_id": payload.channel_id, "due_at": post.get("dueAt") or due_at, "external_link": post.get("externalLink"), "approved_at": datetime.now(timezone.utc).isoformat(), "mode": "shareNow" if payload.publish_now else "customScheduled"}
     item.config = {**config, "publishing": record}
     db.commit()
     return {"workflow_id": workflow_id, "publishing": record}

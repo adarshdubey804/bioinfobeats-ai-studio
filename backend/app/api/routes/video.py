@@ -1,9 +1,10 @@
 from uuid import uuid4
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.models.workflow import Workflow
+from app.models.user import User
+from app.api.deps import get_current_user, get_owned_workflow
 from app.worker.video_tasks import render_workflow_video
 
 router = APIRouter()
@@ -20,10 +21,8 @@ class VideoRenderRequest(BaseModel):
     music_filename: str | None = Field(default=None, max_length=100)
 
 @router.post("/workflows/{workflow_id}/render", tags=["video"])
-def queue_video_render(workflow_id: str, payload: VideoRenderRequest, db: Session = Depends(get_db)):
-    item = db.get(Workflow, workflow_id)
-    if not item:
-        raise HTTPException(404, "Workflow not found")
+def queue_video_render(workflow_id: str, payload: VideoRenderRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    item = get_owned_workflow(workflow_id, user, db)
     render_id = str(uuid4())
     request = payload.model_dump()
     render = {"id": render_id, "status": "queued", "title": payload.title, "aspect": payload.aspect, "scene_count": len(payload.scenes)}
