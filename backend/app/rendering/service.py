@@ -1,5 +1,6 @@
-"""Narration, generated scene artwork, subtitles and FFmpeg assembly."""
+"""Narration, timed scene animation, captions and FFmpeg assembly."""
 from __future__ import annotations
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Literal
 import httpx
 from app.core.config import settings
 from app.rendering.visuals import generate_scene_image
+from app.rendering.storyboard import build_storyboard
 
 class RenderConfigurationError(RuntimeError):
     pass
@@ -16,23 +18,54 @@ def _safe_id(value: str) -> str:
         raise ValueError("Invalid render identifier")
     return value
 
-def build_srt(script: str, output: Path, words_per_minute: int = 145) -> None:
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\\s+", script.strip()) if s.strip()]
+def _run(command: list[str], timeout: int | None = None) -> str:
+    result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=timeout or settings.render_timeout_seconds * 4)
+    return result.stdout.strip()
+
+def _duration(path: Path) -> float:
+    value = _run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)])
+    duration = float(value)
+    if duration <= 0:
+        raise ValueError("Could not determine narration duration.")
+    return duration
+
+def _stamp(seconds: float) -> str:
+    ms = int(seconds * 1000)
+    h, ms = divmod(ms, 3600000); m, ms = divmod(ms, 60000); sec, ms = divmod(ms, 1000)
+    return f"{h:02}:{m:02}:{sec:02},{ms:03}"
+
+def build_srt(script: str, output: Path, duration_seconds: float | None = None, words_per_minute: int = 145) -> None:
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", script.strip()) if s.strip()]
+    if not sentences:
+        raise ValueError("Narration script is empty.")
+    weights = [max(1, len(sentence.split())) for sentence in sentences]
+    total = sum(weights)
+    duration = duration_seconds or total / words_per_minute * 60
     cursor = 0.0
     lines = []
-    for index, sentence in enumerate(sentences, 1):
-        duration = max(2.0, len(sentence.split()) / words_per_minute * 60)
-        start, end = cursor, cursor + duration
-        def stamp(seconds: float) -> str:
-            ms = int(seconds * 1000)
-            h, ms = divmod(ms, 3600000); m, ms = divmod(ms, 60000); sec, ms = divmod(ms, 1000)
-            return f"{h:02}:{m:02}:{sec:02},{ms:03}"
-        lines.extend([str(index), f"{stamp(start)} --> {stamp(end)}", sentence, ""])
+    for index, (sentence, weight) in enumerate(zip(sentences, weights), 1):
+        end = duration if index == len(sentences) else cursor + duration * weight / total
+        words = sentence.split()
+        chunks = [" ".join(words[i:i+10]) for i in range(0, len(words), 10)]
+        caption = "\\N".join(chunks)
+        lines.extend([str(index), f"{_stamp(cursor)} --> {_stamp(end)}", caption, ""])
         cursor = end
-    output.write_text("\\n".join(lines), encoding="utf-8")
+    output.write_text("\n".join(lines), encoding="utf-8")
 
-def _run(command: list[str], timeout: int | None = None) -> None:
-    subprocess.run(command, check=True, capture_output=True, text=True, timeout=timeout or settings.render_timeout_seconds * 4)
+def _scene_durations(scenes: list[dict], script: str, duration: float) -> list[float]:
+    weights = []
+    for index, scene in enumerate(scenes):
+        excerpt = str(scene.get("narration_excerpt") or "")
+        weights.append(max(1, len(excerpt.split())) if excerpt else max(1, len(script.split()) // len(scenes)))
+    total = sum(weights)
+    result = [duration * weight / total for weight in weights]
+    result[-1] += duration - sum(result)
+    return result
+
+def _caption_filter(srt_path: Path, width: int) -> str:
+    safe = srt_path.as_posix().replace(":", "\\:")
+    font_size = 24 if width < 1500 else 32
+    return f"subtitles='{safe}':force_style='FontName=DejaVu Sans,FontSize={font_size},PrimaryColour=&H00FFFFFF,OutlineColour=&H00101820,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=90'"
 
 def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None) -> str:
     if not settings.elevenlabs_api_key or not settings.elevenlabs_voice_id:
@@ -47,49 +80,41 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     response = httpx.post(
         f"https://api.elevenlabs.io/v1/text-to-speech/{settings.elevenlabs_voice_id}",
         headers={"xi-api-key": settings.elevenlabs_api_key, "Accept": "audio/mpeg", "Content-Type": "application/json"},
-        json={"text": script, "model_id": settings.elevenlabs_model_id},
+        json={"text": script, "model_id": settings.elevenlabs_model_id, "voice_settings": {"stability": 0.48, "similarity_boost": 0.78}},
         timeout=settings.render_timeout_seconds,
     )
     response.raise_for_status()
     audio_path.write_bytes(response.content)
-    build_srt(script, srt_path)
+    audio_duration = _duration(audio_path)
+    build_srt(script, srt_path, audio_duration)
     width, height = (1080, 1920) if aspect == "vertical" else (1920, 1080)
-    scene_items = scenes or []
-    if scene_items:
-        if len(scene_items) > 8:
-            raise ValueError("A maximum of 8 generated scenes is supported per render.")
-        segment_paths = []
-        for index, scene in enumerate(scene_items):
-            image_path = job_dir / f"scene-{index + 1:02}.png"
-            prompt = (
-                "Create a polished, cinematic educational science video still. "
-                "No text, no labels, no logos, no watermark. Strong visual hierarchy, "
-                "accurate scientific imagery, deep navy and electric cyan BioinfoBeats palette. "
-                + scene["prompt"]
-            )
-            generate_scene_image(prompt, image_path, aspect)
-            segment_path = job_dir / f"segment-{index + 1:02}.mp4"
-            duration = max(3, min(int(scene.get("duration_seconds", 6)), 20))
-            _run([
-                settings.ffmpeg_binary, "-y", "-loop", "1", "-i", str(image_path), "-t", str(duration),
-                "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},zoompan=z='min(zoom+0.0008,1.08)':d=1:s={width}x{height}:fps=30,format=yuv420p,fade=t=in:st=0:d=0.35,fade=t=out:st={max(0,duration-0.35)}:d=0.35",
-                "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-an", str(segment_path),
-            ])
-            segment_paths.append(segment_path)
-        concat_file = job_dir / "scenes.txt"
-        concat_file.write_text("".join(f"file '{p.name}'\\n" for p in segment_paths), encoding="utf-8")
-        visual_path = job_dir / "visuals.mp4"
-        _run([settings.ffmpeg_binary, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file), "-c", "copy", str(visual_path)])
-        visual_input = str(visual_path)
-        vf = f"subtitles={srt_path.as_posix()}"
-    else:
-        visual_input = None
-        escaped_title = title.replace("\\\\", "\\\\\\\\").replace(":", "\\\\:").replace("'", "\\\\'")
-        vf = (
-            f"drawtext=text='{escaped_title}':fontcolor=white:fontsize=48:"
-            f"x=(w-text_w)/2:y=h*0.18:box=1:boxcolor=0x102A43@0.8:boxborderw=24,"
-            f"subtitles={srt_path.as_posix()}"
+    scene_items = scenes or build_storyboard(script, title)
+    if len(scene_items) > 8:
+        raise ValueError("A maximum of 8 generated scenes is supported per render.")
+    durations = _scene_durations(scene_items, script, audio_duration)
+    segment_paths = []
+    for index, (scene, duration) in enumerate(zip(scene_items, durations)):
+        image_path = job_dir / f"scene-{index + 1:02}.png"
+        prompt = (
+            "Create a polished cinematic educational science scene. No text, no labels, no logos, no watermark. "
+            "Scientifically accurate, strong focal subject, deep navy and electric cyan visual identity. "
+            + str(scene["prompt"])
         )
+        generate_scene_image(prompt, image_path, aspect)
+        segment_path = job_dir / f"segment-{index + 1:02}.mp4"
+        # Slow, alternating Ken Burns movement keeps static artwork visually active.
+        zoom = "min(zoom+0.00065,1.08)" if index % 2 == 0 else "if(lte(zoom,1.0),1.08,max(1.0,zoom-0.00065))"
+        _run([
+            settings.ffmpeg_binary, "-y", "-loop", "1", "-framerate", "30", "-i", str(image_path),
+            "-t", f"{duration:.3f}",
+            "-vf", f"scale={width*2}:{height*2}:force_original_aspect_ratio=increase,crop={width*2}:{height*2},zoompan=z='{zoom}':d=1:s={width}x{height}:fps=30,format=yuv420p,fade=t=in:st=0:d=0.35,fade=t=out:st={max(0,duration-0.35):.3f}:d=0.35",
+            "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-an", "-pix_fmt", "yuv420p", str(segment_path),
+        ])
+        segment_paths.append(segment_path)
+    concat_file = job_dir / "scenes.txt"
+    concat_file.write_text("".join(f"file '{p.name}'\n" for p in segment_paths), encoding="utf-8")
+    visual_path = job_dir / "visuals.mp4"
+    _run([settings.ffmpeg_binary, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file), "-c", "copy", str(visual_path)])
     music_path = None
     if music_filename:
         if Path(music_filename).name != music_filename or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", music_filename):
@@ -97,15 +122,14 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
         music_path = job_dir / music_filename
         if not music_path.is_file():
             raise ValueError("Requested music file was not found in this render's media folder.")
-    if visual_input:
-        command = [settings.ffmpeg_binary, "-y", "-i", visual_input, "-i", str(audio_path)]
-    else:
-        command = [settings.ffmpeg_binary, "-y", "-f", "lavfi", "-i", f"color=c=0x071A2B:s={width}x{height}:r=30", "-i", str(audio_path)]
+    caption_filter = _caption_filter(srt_path, width)
+    command = [settings.ffmpeg_binary, "-y", "-i", str(visual_path), "-i", str(audio_path)]
     if music_path:
         command += ["-stream_loop", "-1", "-i", str(music_path)]
-        command += ["-vf", vf, "-filter_complex", "[1:a]volume=1.0[voice];[2:a]volume=0.12[music];[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout]", "-map", "0:v", "-map", "[aout]"]
+        audio_filter = "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice];[2:a]volume=0.12[music];[music][voice]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=350[ducked];[voice][ducked]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+        command += ["-vf", caption_filter, "-filter_complex", audio_filter, "-map", "0:v", "-map", "[aout]"]
     else:
-        command += ["-vf", vf, "-map", "0:v", "-map", "1:a"]
-    command += ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(video_path)]
+        command += ["-vf", caption_filter, "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-map", "0:v", "-map", "1:a"]
+    command += ["-t", f"{audio_duration:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(video_path)]
     _run(command)
     return f"/media/{render_id}/final.mp4"

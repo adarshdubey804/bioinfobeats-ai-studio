@@ -11,7 +11,8 @@ router = APIRouter()
 
 class SceneRequest(BaseModel):
     prompt: str = Field(min_length=8, max_length=700)
-    duration_seconds: int = Field(default=6, ge=3, le=20)
+    narration_excerpt: str = Field(default="", max_length=1200)
+    transition: str = Field(default="fade", pattern="^(cut|fade)$")
 
 class VideoRenderRequest(BaseModel):
     title: str = Field(min_length=3, max_length=120)
@@ -25,7 +26,7 @@ def queue_video_render(workflow_id: str, payload: VideoRenderRequest, db: Sessio
     item = get_owned_workflow(workflow_id, user, db)
     render_id = str(uuid4())
     request = payload.model_dump()
-    render = {"id": render_id, "status": "queued", "title": payload.title, "aspect": payload.aspect, "scene_count": len(payload.scenes)}
+    render = {"id": render_id, "status": "queued", "title": payload.title, "aspect": payload.aspect, "scene_count": len(payload.scenes), "storyboard": "auto" if not payload.scenes else "provided"}
     item.config = {**(item.config or {}), "video_render": render, "video_render_request": request}
     db.commit()
     render_workflow_video.delay(workflow_id, render_id)
