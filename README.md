@@ -118,3 +118,7 @@ Queue endpoints reject a workflow that already has an active background job. A s
 
 ### API protection and media quotas
 Authentication registration is limited to 5 requests per IP per minute; login to 10 per minute; media uploads to 20 per IP per minute. Limits use Redis shared across API instances and return HTTP 503 if Redis is unavailable (fail-closed). Each account has a 1 GiB media-library quota, reserved atomically when an upload is accepted and released when an asset is deleted. Individual uploads remain capped at 50 MiB. These are baseline controls; production deployments should add edge/WAF limits and monitor Redis availability.
+
+
+### Provider readiness and live validation
+Authenticated operators can inspect `GET /api/v1/health/providers` for a secret-free inventory of configured provider credentials. The endpoint checks configuration presence only; it does not validate keys, make paid requests, prove quota availability, or guarantee model access. The core pipeline expects an LLM key, Tavily, ElevenLabs API key plus voice ID, and an OpenAI image key. Replicate, Buffer and Google OAuth are optional capabilities. Run a small controlled end-to-end test with real credentials before enabling production workloads.

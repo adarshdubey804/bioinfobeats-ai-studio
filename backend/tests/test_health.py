@@ -31,3 +31,30 @@ def test_readiness_when_dependencies_are_healthy(monkeypatch):
     response = client.get("/api/v1/health/ready")
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
+
+
+def test_provider_configuration_reports_missing_core_without_secrets(monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "llm_api_key", "")
+    monkeypatch.setattr(settings, "tavily_api_key", "configured-secret")
+    monkeypatch.setattr(settings, "elevenlabs_api_key", "")
+    monkeypatch.setattr(settings, "elevenlabs_voice_id", "voice-id")
+    monkeypatch.setattr(settings, "openai_api_key", "image-secret")
+    result = health.provider_configuration()
+    assert result["core_ready"] is False
+    assert set(result["core_missing"]) == {"llm", "elevenlabs_tts"}
+    assert "configured-secret" not in str(result)
+    assert "image-secret" not in str(result)
+
+
+def test_provider_configuration_marks_core_ready_when_required_keys_exist(monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "llm_api_key", "llm-secret")
+    monkeypatch.setattr(settings, "tavily_api_key", "tavily-secret")
+    monkeypatch.setattr(settings, "elevenlabs_api_key", "tts-secret")
+    monkeypatch.setattr(settings, "elevenlabs_voice_id", "voice-id")
+    monkeypatch.setattr(settings, "openai_api_key", "image-secret")
+    result = health.provider_configuration()
+    assert result["core_ready"] is True
+    assert result["core_missing"] == []
+    assert result["providers"]["replicate_motion_video"]["configured"] is False
