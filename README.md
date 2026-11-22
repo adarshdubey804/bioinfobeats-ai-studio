@@ -110,3 +110,7 @@ Agent pipeline queueing and one-click production assembly each create a durable 
 
 ### Background job cancellation
 Authenticated users can request cancellation with `POST /api/v1/workflows/{workflow_id}/jobs/{job_id}/cancel`. Queued tasks are revoked without worker termination. Running tasks receive a cooperative cancellation request and stop at their next supported safe checkpoint; a video render already executing FFmpeg/provider work is not force-killed, so it may finish that stage before cancellation is acknowledged. Cancelled workflows can be queued again. The API returns `cancelling` while a running worker is reaching its checkpoint.
+
+
+### Safe stale-job recovery
+Queue endpoints reject a workflow that already has an active background job. A stale job can be closed through `POST /api/v1/workflows/{workflow_id}/jobs/{job_id}/recover` with `{"worker_stopped":true}` only after an operator has verified that the old worker process is stopped. The API checks the stale threshold, requests Celery revocation, closes the old run and permits a new queue. This is deliberately a manual safety gate: revocation alone does not terminate an already-running task, and blindly replaying a task could duplicate provider charges or production assets.

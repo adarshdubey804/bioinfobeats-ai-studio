@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.workflow import Workflow
@@ -13,6 +14,9 @@ from datetime import datetime, timezone
 from app.worker.job_health import job_health
 
 router = APIRouter()
+
+class RecoveryConfirmation(BaseModel):
+    worker_stopped: bool = False
 
 def serialize(item: Workflow):
     config = item.config or {}
@@ -42,6 +46,9 @@ def get_workflow(workflow_id: str, db: Session = Depends(get_db), user: User = D
 def queue_workflow(workflow_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     item = get_owned_workflow(workflow_id, user, db)
     if item.status not in {'draft', 'failed', 'cancelled'}: raise HTTPException(409, f'Cannot queue workflow in {item.status} state')
+    active = db.query(JobRun).filter(JobRun.workflow_id == workflow_id, JobRun.status.in_(['queued', 'running', 'retrying', 'cancelling'])).first()
+    if active:
+        raise HTTPException(409, f'Workflow already has an active job ({active.status}). Inspect job history before queueing again.')
     item.status = 'queued'; db.commit()
     run = JobRun(id=str(uuid.uuid4()), workflow_id=item.id, task_type="agent_pipeline", status="queued", progress={"stage": "queued", "percent": 0})
     db.add(run); db.commit(); db.refresh(run)
@@ -85,3 +92,33 @@ def cancel_workflow_job(workflow_id: str, job_id: str, db: Session = Depends(get
             celery_app.control.revoke(run.celery_task_id, terminate=False)
     db.commit()
     return {'job_id': run.id, 'status': run.status, 'cancel_requested': True, 'message': 'Cancellation recorded'}
+
+
+@router.post('/workflows/{workflow_id}/jobs/{job_id}/recover', tags=['workflows'])
+def recover_stale_workflow_job(workflow_id: str, job_id: str, payload: RecoveryConfirmation, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    item = get_owned_workflow(workflow_id, user, db)
+    run = db.query(JobRun).filter(JobRun.id == job_id, JobRun.workflow_id == workflow_id).with_for_update().first()
+    if run is None:
+        raise HTTPException(404, 'Job not found')
+    if run.status not in {'queued', 'running', 'retrying', 'cancelling'}:
+        raise HTTPException(409, f'Job is not recoverable from {run.status} state')
+    health = job_health(run)
+    if not health['is_stale']:
+        raise HTTPException(409, 'Job is not stale. Wait for the health threshold or inspect the worker.')
+    if not payload.worker_stopped:
+        raise HTTPException(409, 'Recovery is blocked until an operator confirms the old worker process has been stopped. This prevents duplicate execution.')
+    run.cancel_requested = True
+    if run.celery_task_id:
+        celery_app.control.revoke(run.celery_task_id, terminate=False)
+    run.status = 'failed'
+    run.finished_at = datetime.now(timezone.utc)
+    run.error = 'Marked for manual recovery after operator confirmed the previous worker was stopped.'
+    run.progress = {**(run.progress or {}), 'stage': 'recovered', 'message': 'Previous execution closed by operator; workflow may be queued again.'}
+    if run.task_type == 'agent_pipeline':
+        item.status = 'failed'
+    elif run.task_type == 'production_assembly':
+        config = item.config or {}
+        assembly = config.get('production_assembly') or {}
+        item.config = {**config, 'production_assembly': {**assembly, 'status': 'failed', 'step': 'recovered', 'error': run.error}}
+    db.commit()
+    return {'job_id': run.id, 'status': run.status, 'workflow_status': item.status, 'message': 'Previous run closed. You may now queue a new run.'}

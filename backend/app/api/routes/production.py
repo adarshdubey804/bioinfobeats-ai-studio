@@ -31,6 +31,9 @@ def assemble_production(workflow_id: str, payload: AssemblyRequest, db: Session 
     script=config.get("approved_script") or ""
     if not config.get("research_script_id") or len(script.strip()) < 30:
         raise HTTPException(409,"This workflow has no approved research script. Create it from the Research Studio approval handoff.")
+    active_run = db.query(JobRun).filter(JobRun.workflow_id == workflow_id, JobRun.status.in_(["queued", "running", "retrying", "cancelling"])).first()
+    if active_run:
+        raise HTTPException(409, f"Workflow already has an active background job ({active_run.status}).")
     existing=config.get("production_assembly") or {}
     if existing.get("status") in {"queued","rendering","generating_creatives","retrying"}:
         raise HTTPException(409,"Production assembly is already running.")

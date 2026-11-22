@@ -32,3 +32,15 @@ def test_completed_job_is_never_stale():
     now = datetime.now(timezone.utc)
     run = SimpleNamespace(status="succeeded", started_at=now - timedelta(days=2), created_at=now - timedelta(days=2))
     assert job_health(run, now)["health"] == "finished"
+
+
+def test_job_health_stale_threshold_uses_latest_heartbeat():
+    now = datetime.now(timezone.utc)
+    run = SimpleNamespace(status="running", heartbeat_at=now - timedelta(minutes=46), started_at=now - timedelta(hours=2), created_at=now - timedelta(hours=2))
+    assert job_health(run, now)["is_stale"] is True
+
+
+def test_job_health_recent_heartbeat_prevents_false_stale_flag():
+    now = datetime.now(timezone.utc)
+    run = SimpleNamespace(status="running", heartbeat_at=now - timedelta(minutes=2), started_at=now - timedelta(hours=2), created_at=now - timedelta(hours=2))
+    assert job_health(run, now)["is_stale"] is False
