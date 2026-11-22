@@ -92,7 +92,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     scene_items = scenes or build_storyboard(script, title)
     if len(scene_items) > 8:
         raise ValueError("A maximum of 8 generated scenes is supported per render.")
-    durations = _scene_durations(scene_items, script, audio_duration)
+    manifest = {"title": title, "aspect": aspect, "visual_mode": visual_mode, "audio_duration_seconds": audio_duration, "scenes": scene_items}\n    (job_dir / "storyboard.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")\n    durations = _scene_durations(scene_items, script, audio_duration)
     segment_paths = []
     for index, (scene, duration) in enumerate(zip(scene_items, durations)):
         segment_path = job_dir / f"segment-{index + 1:02}.mp4"
