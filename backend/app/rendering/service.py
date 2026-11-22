@@ -9,6 +9,7 @@ import httpx
 from app.core.config import settings
 from app.rendering.visuals import generate_scene_image
 from app.rendering.storyboard import build_storyboard
+from app.rendering.motion import generate_motion_clip, MotionProviderError
 
 class RenderConfigurationError(RuntimeError):
     pass
@@ -67,7 +68,7 @@ def _caption_filter(srt_path: Path, width: int) -> str:
     font_size = 24 if width < 1500 else 32
     return f"subtitles='{safe}':force_style='FontName=DejaVu Sans,FontSize={font_size},PrimaryColour=&H00FFFFFF,OutlineColour=&H00101820,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=90'"
 
-def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None) -> str:
+def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto") -> str:
     if not settings.elevenlabs_api_key or not settings.elevenlabs_voice_id:
         raise RenderConfigurationError("Configure ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to render narration.")
     render_id = _safe_id(render_id)
@@ -94,23 +95,35 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     durations = _scene_durations(scene_items, script, audio_duration)
     segment_paths = []
     for index, (scene, duration) in enumerate(zip(scene_items, durations)):
-        image_path = job_dir / f"scene-{index + 1:02}.png"
+        segment_path = job_dir / f"segment-{index + 1:02}.mp4"
         prompt = (
-            "Create a polished cinematic educational science scene. No text, no labels, no logos, no watermark. "
-            "Scientifically accurate, strong focal subject, deep navy and electric cyan visual identity. "
+            "Create a scientifically accurate cinematic educational science video shot. "
+            "No text, labels, subtitles, logos or watermark. Deep navy and electric cyan visual identity. "
+            "Use coherent natural camera motion, stable geometry, physically plausible movement, "
+            "clean scientific composition and no morphing of molecular structures. "
             + str(scene["prompt"])
         )
-        generate_scene_image(prompt, image_path, aspect)
-        segment_path = job_dir / f"segment-{index + 1:02}.mp4"
-        # Slow, alternating Ken Burns movement keeps static artwork visually active.
-        zoom = "min(zoom+0.00065,1.08)" if index % 2 == 0 else "if(lte(zoom,1.0),1.08,max(1.0,zoom-0.00065))"
-        _run([
-            settings.ffmpeg_binary, "-y", "-loop", "1", "-framerate", "30", "-i", str(image_path),
-            "-t", f"{duration:.3f}",
-            "-vf", f"scale={width*2}:{height*2}:force_original_aspect_ratio=increase,crop={width*2}:{height*2},zoompan=z='{zoom}':d=1:s={width}x{height}:fps=30,format=yuv420p,fade=t=in:st=0:d=0.35,fade=t=out:st={max(0,duration-0.35):.3f}:d=0.35",
-            "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-an", "-pix_fmt", "yuv420p", str(segment_path),
-        ])
-        segment_paths.append(segment_path)
+        use_motion = visual_mode == "ai" or (visual_mode == "auto" and bool(settings.replicate_api_token and settings.replicate_video_model_version))
+        if use_motion:
+            motion_path = job_dir / f"motion-{index + 1:02}.mp4"
+            generate_motion_clip(prompt, motion_path, aspect, duration)
+            _run([
+                settings.ffmpeg_binary, "-y", "-i", str(motion_path), "-t", f"{duration:.3f}",
+                "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},fps=30,format=yuv420p",
+                "-an", "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                "-t", f"{duration:.3f}", str(segment_path),
+            ])
+        else:
+            image_path = job_dir / f"scene-{index + 1:02}.png"
+            generate_scene_image(prompt, image_path, aspect)
+            zoom = "min(zoom+0.00065,1.08)" if index % 2 == 0 else "if(lte(zoom,1.0),1.08,max(1.0,zoom-0.00065))"
+            _run([
+                settings.ffmpeg_binary, "-y", "-loop", "1", "-framerate", "30", "-i", str(image_path),
+                "-t", f"{duration:.3f}",
+                "-vf", f"scale={width*2}:{height*2}:force_original_aspect_ratio=increase,crop={width*2}:{height*2},zoompan=z='{zoom}':d=1:s={width}x{height}:fps=30,format=yuv420p,fade=t=in:st=0:d=0.35:alpha=0,fade=t=out:st={max(0,duration-0.35):.3f}:d=0.35:alpha=0",
+                "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-an", "-pix_fmt", "yuv420p", str(segment_path),
+            ])
+
     concat_file = job_dir / "scenes.txt"
     concat_file.write_text("".join(f"file '{p.name}'\n" for p in segment_paths), encoding="utf-8")
     visual_path = job_dir / "visuals.mp4"

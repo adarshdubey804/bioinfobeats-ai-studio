@@ -20,13 +20,14 @@ class VideoRenderRequest(BaseModel):
     aspect: str = Field(default="vertical", pattern="^(vertical|landscape)$")
     scenes: list[SceneRequest] = Field(default_factory=list, max_length=8)
     music_filename: str | None = Field(default=None, max_length=100)
+    visual_mode: str = Field(default="auto", pattern="^(auto|static|ai)$")
 
 @router.post("/workflows/{workflow_id}/render", tags=["video"])
 def queue_video_render(workflow_id: str, payload: VideoRenderRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     item = get_owned_workflow(workflow_id, user, db)
     render_id = str(uuid4())
     request = payload.model_dump()
-    render = {"id": render_id, "status": "queued", "title": payload.title, "aspect": payload.aspect, "scene_count": len(payload.scenes), "storyboard": "auto" if not payload.scenes else "provided"}
+    render = {"id": render_id, "status": "queued", "title": payload.title, "aspect": payload.aspect, "scene_count": len(payload.scenes), "visual_mode": payload.visual_mode, "storyboard": "auto" if not payload.scenes else "provided"}
     item.config = {**(item.config or {}), "video_render": render, "video_render_request": request}
     db.commit()
     render_workflow_video.delay(workflow_id, render_id)
