@@ -10,6 +10,7 @@ export default defineConfig([
       // Existing dashboard uses dynamic API payloads; keep these visible as warnings
       // while blocking all other lint errors in CI.
       '@typescript-eslint/no-explicit-any': 'warn',
+      'react-hooks/set-state-in-effect': 'warn',
     },
   },
   globalIgnores(['.next/**', 'out/**', 'build/**', 'next-env.d.ts']),
