@@ -16,6 +16,15 @@
 7. Set `GOOGLE_OAUTH_REDIRECT_URI=https://APP_DOMAIN/api/v1/oauth/google/callback` and `GOOGLE_OAUTH_FRONTEND_URL=https://APP_DOMAIN`.
 8. Review all provider keys and OAuth callback URLs before accepting users.
 
+## Pre-flight validation
+Run the secret-safe preflight before starting services. It checks the production domain, minimum secret lengths, rejects sample placeholders, validates internal database/Redis URLs, verifies HTTPS CORS and Google OAuth origins, and requires the core production provider credentials. It never prints secret values.
+
+```sh
+bash deploy/preflight.sh .env
+```
+
+The script validates configuration presence and format only; it does not contact paid providers or verify API keys, quotas, model access, DNS, or TLS issuance.
+
 ## Start and verify
 ```sh
 docker compose -f deploy/compose.production.yml --env-file .env config
