@@ -13,6 +13,7 @@ class SceneRequest(BaseModel):
     prompt: str = Field(min_length=8, max_length=700)
     narration_excerpt: str = Field(default="", max_length=1200)
     transition: str = Field(default="fade", pattern="^(cut|fade)$")
+    duration_seconds: float | None = Field(default=None, ge=1, le=180)
 
 class VideoRenderRequest(BaseModel):
     title: str = Field(min_length=3, max_length=120)
@@ -21,6 +22,7 @@ class VideoRenderRequest(BaseModel):
     scenes: list[SceneRequest] = Field(default_factory=list, max_length=8)
     music_filename: str | None = Field(default=None, max_length=100)
     visual_mode: str = Field(default="auto", pattern="^(auto|static|ai)$")
+    music_volume: float = Field(default=0.12, ge=0, le=0.3)
 
 @router.post("/workflows/{workflow_id}/render", tags=["video"])
 def queue_video_render(workflow_id: str, payload: VideoRenderRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):

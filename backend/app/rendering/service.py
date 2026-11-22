@@ -55,9 +55,16 @@ def build_srt(script: str, output: Path, duration_seconds: float | None = None, 
 
 def _scene_durations(scenes: list[dict], script: str, duration: float) -> list[float]:
     weights = []
-    for index, scene in enumerate(scenes):
-        excerpt = str(scene.get("narration_excerpt") or "")
-        weights.append(max(1, len(excerpt.split())) if excerpt else max(1, len(script.split()) // len(scenes)))
+    for scene in scenes:
+        requested = scene.get("duration_seconds")
+        if requested is not None:
+            value = float(requested)
+            if not 1 <= value <= 180:
+                raise ValueError("Each timeline scene duration must be between 1 and 180 seconds.")
+            weights.append(value)
+        else:
+            excerpt = str(scene.get("narration_excerpt") or "")
+            weights.append(max(1, len(excerpt.split())) if excerpt else max(1, len(script.split()) // len(scenes)))
     total = sum(weights)
     result = [duration * weight / total for weight in weights]
     result[-1] += duration - sum(result)
@@ -68,7 +75,7 @@ def _caption_filter(srt_path: Path, width: int) -> str:
     font_size = 24 if width < 1500 else 32
     return f"subtitles='{safe}':force_style='FontName=DejaVu Sans,FontSize={font_size},PrimaryColour=&H00FFFFFF,OutlineColour=&H00101820,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=90'"
 
-def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto") -> str:
+def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto", music_volume: float = 0.12) -> str:
     if not settings.elevenlabs_api_key or not settings.elevenlabs_voice_id:
         raise RenderConfigurationError("Configure ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to render narration.")
     render_id = _safe_id(render_id)
@@ -92,7 +99,14 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
     scene_items = scenes or build_storyboard(script, title)
     if len(scene_items) > 8:
         raise ValueError("A maximum of 8 generated scenes is supported per render.")
-    manifest = {"title": title, "aspect": aspect, "visual_mode": visual_mode, "audio_duration_seconds": audio_duration, "scenes": scene_items}\n    (job_dir / "storyboard.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")\n    durations = _scene_durations(scene_items, script, audio_duration)
+    durations = _scene_durations(scene_items, script, audio_duration)
+    cursor = 0.0
+    timeline = []
+    for index, (scene, scene_duration) in enumerate(zip(scene_items, durations)):
+        timeline.append({**scene, "index": index, "start_seconds": round(cursor, 3), "end_seconds": round(cursor + scene_duration, 3), "duration_seconds": round(scene_duration, 3)})
+        cursor += scene_duration
+    manifest = {"title": title, "aspect": aspect, "visual_mode": visual_mode, "audio_duration_seconds": audio_duration, "music_volume": music_volume, "scenes": timeline}
+    (job_dir / "storyboard.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     segment_paths = []
     for index, (scene, duration) in enumerate(zip(scene_items, durations)):
         segment_path = job_dir / f"segment-{index + 1:02}.mp4"
@@ -123,6 +137,7 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
                 "-vf", f"scale={width*2}:{height*2}:force_original_aspect_ratio=increase,crop={width*2}:{height*2},zoompan=z='{zoom}':d=1:s={width}x{height}:fps=30,format=yuv420p,fade=t=in:st=0:d=0.35:alpha=0,fade=t=out:st={max(0,duration-0.35):.3f}:d=0.35:alpha=0",
                 "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-an", "-pix_fmt", "yuv420p", str(segment_path),
             ])
+        segment_paths.append(segment_path)
 
     concat_file = job_dir / "scenes.txt"
     concat_file.write_text("".join(f"file '{p.name}'\n" for p in segment_paths), encoding="utf-8")
@@ -135,11 +150,13 @@ def render_video(render_id: str, title: str, script: str, aspect: Literal["verti
         music_path = job_dir / music_filename
         if not music_path.is_file():
             raise ValueError("Requested music file was not found in this render's media folder.")
+    if not 0 <= music_volume <= 0.3:
+        raise ValueError("Music volume must be between 0 and 0.3.")
     caption_filter = _caption_filter(srt_path, width)
     command = [settings.ffmpeg_binary, "-y", "-i", str(visual_path), "-i", str(audio_path)]
     if music_path:
         command += ["-stream_loop", "-1", "-i", str(music_path)]
-        audio_filter = "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice];[2:a]volume=0.12[music];[music][voice]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=350[ducked];[voice][ducked]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+        audio_filter = "[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[voice];[2:a]volume={music_volume}[music];[music][voice]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=350[ducked];[voice][ducked]amix=inputs=2:duration=first:dropout_transition=2[aout]"
         command += ["-vf", caption_filter, "-filter_complex", audio_filter, "-map", "0:v", "-map", "[aout]"]
     else:
         command += ["-vf", caption_filter, "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-map", "0:v", "-map", "1:a"]
