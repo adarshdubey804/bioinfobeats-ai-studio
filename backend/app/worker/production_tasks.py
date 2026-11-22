@@ -3,6 +3,8 @@ import logging
 from app.worker.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.models.workflow import Workflow
+from app.models.job_run import JobRun
+from datetime import datetime, timezone
 from app.rendering.service import render_video
 from app.worker.video_tasks import _prepare_assets
 from app.creative.service import create_creative_package
@@ -10,7 +12,7 @@ from app.creative.service import create_creative_package
 logger = logging.getLogger(__name__)
 
 
-def _persist_progress(workflow_id: str, render_id: str, progress: dict) -> None:
+def _persist_progress(workflow_id: str, render_id: str, progress: dict, job_run_id: str | None = None) -> None:
     session = SessionLocal()
     try:
         item = session.get(Workflow, workflow_id)
@@ -21,6 +23,10 @@ def _persist_progress(workflow_id: str, render_id: str, progress: dict) -> None:
         if assembly.get("render_id") != render_id:
             return
         current = config.get("video_render") or {}
+        run = session.get(JobRun, job_run_id) if job_run_id else None
+        if run:
+            run.status = "running"
+            run.progress = progress
         item.config = {
             **config,
             "video_render": {**current, "id": render_id, "status": "rendering", "progress": progress},
@@ -40,12 +46,20 @@ def _persist_progress(workflow_id: str, render_id: str, progress: dict) -> None:
     retry_backoff_max=300,
     retry_jitter=True,
 )
-def assemble_approved_production(self, workflow_id: str, render_id: str):
+def assemble_approved_production(self, workflow_id: str, render_id: str, job_run_id: str | None = None):
     db = SessionLocal()
     try:
         item = db.get(Workflow, workflow_id)
         if item is None:
             return {"status": "not_found"}
+        run = db.get(JobRun, job_run_id) if job_run_id else None
+        if run:
+            run.celery_task_id = self.request.id
+            run.status = "running"
+            run.started_at = run.started_at or datetime.now(timezone.utc)
+            run.attempts += 1
+            run.progress = {"stage": "starting", "percent": 2, "message": "Production assembly started"}
+            db.commit()
         config = item.config or {}
         job = config.get("production_assembly") or {}
         if job.get("render_id") != render_id:
@@ -54,6 +68,10 @@ def assemble_approved_production(self, workflow_id: str, render_id: str):
         title = config.get("approved_title") or item.topic
         if len(script.strip()) < 30:
             job = {**job, "status": "failed", "error": "Approved script is missing or too short."}
+            if run:
+                run.status = "failed"
+                run.error = job["error"]
+                run.finished_at = datetime.now(timezone.utc)
             item.config = {**config, "production_assembly": job}
             db.commit()
             return {"status": "failed", "error": job["error"]}
@@ -70,7 +88,7 @@ def assemble_approved_production(self, workflow_id: str, render_id: str):
             db.commit()
             options = config.get("video_render_request") or {}
             scene_paths, music_path, logo_path = _prepare_assets(db, item.owner_id, render_id, options)
-            progress = lambda value: _persist_progress(workflow_id, render_id, value)
+            progress = lambda value: _persist_progress(workflow_id, render_id, value, job_run_id)
             video_url = render_video(
                 render_id,
                 title,
@@ -116,6 +134,11 @@ def assemble_approved_production(self, workflow_id: str, render_id: str):
         creative = create_creative_package(workflow_id, item.topic, title, script, ["YouTube", "Instagram", "LinkedIn"])
         item = db.get(Workflow, workflow_id)
         config = item.config or {}
+        if run:
+            run.status = "succeeded"
+            run.progress = {"stage": "complete", "percent": 100, "message": "Video and creative assets are ready for review"}
+            run.error = None
+            run.finished_at = datetime.now(timezone.utc)
         item.config = {
             **config,
             "creative_package": creative,
@@ -130,6 +153,12 @@ def assemble_approved_production(self, workflow_id: str, render_id: str):
             config = item.config or {}
             prior = config.get("production_assembly") or {}
             retrying = self.request.retries < self.max_retries
+            if run:
+                run.status = "retrying" if retrying else "failed"
+                run.error = str(exc)[:4000]
+                run.progress = {"stage": prior.get("step", "failed"), "percent": 0, "message": "Retry scheduled" if retrying else "Production assembly failed"}
+                if not retrying:
+                    run.finished_at = datetime.now(timezone.utc)
             item.config = {
                 **config,
                 "production_assembly": {
