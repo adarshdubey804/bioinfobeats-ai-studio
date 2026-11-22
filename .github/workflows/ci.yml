@@ -15,6 +15,10 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install -r backend/requirements.txt
       - run: cd backend && PYTHONPATH=. pytest
+      - name: Audit Python dependencies
+        run: |
+          python -m pip install --upgrade pip-audit
+          pip-audit -r backend/requirements.txt
   frontend:
     runs-on: ubuntu-latest
     steps:
@@ -22,6 +26,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - run: cd frontend && npm install
+      - name: Lint frontend
+        run: cd frontend && npm run lint
+      - name: Audit JavaScript dependencies
+        run: cd frontend && npm audit --audit-level=high
       - run: cd frontend && npm run build
 
   compose-smoke:
