@@ -122,3 +122,7 @@ Authentication registration is limited to 5 requests per IP per minute; login to
 
 ### Provider readiness and live validation
 Authenticated operators can inspect `GET /api/v1/health/providers` for a secret-free inventory of configured provider credentials. The endpoint checks configuration presence only; it does not validate keys, make paid requests, prove quota availability, or guarantee model access. The core pipeline expects an LLM key, Tavily, ElevenLabs API key plus voice ID, and an OpenAI image key. Replicate, Buffer and Google OAuth are optional capabilities. Run a small controlled end-to-end test with real credentials before enabling production workloads.
+
+
+## Production deployment
+A single-host production Compose topology with Caddy TLS termination, internal-only application/database/cache services, persistent volumes, health checks and bounded container logs is provided in `deploy/`. Follow [deploy/PRODUCTION.md](deploy/PRODUCTION.md). Backups: `bash deploy/backup.sh`; destructive restore instructions: [deploy/RESTORE.md](deploy/RESTORE.md). This is a single-host baseline, not a high-availability deployment. Test restores on staging and maintain encrypted off-host backups.
