@@ -119,8 +119,8 @@ def _caption_filter(srt_path: Path, width: int) -> str:
     return f"subtitles='{safe}':force_style='FontName=DejaVu Sans,FontSize={font_size},PrimaryColour=&H00FFFFFF,OutlineColour=&H00101820,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=90'"
 
 def render_video(render_id: str, title: str, script: str, aspect: Literal["vertical", "landscape"], scenes: list[dict] | None = None, music_filename: str | None = None, visual_mode: str = "auto", music_volume: float = 0.12, scene_asset_paths: dict[int, str] | None = None, brand_logo_path: str | None = None, brand_logo_asset_id: str | None = None, music_asset_id: str | None = None, progress_callback=None, voice_id: str | None = None, voice_stability: float = 0.48, voice_similarity: float = 0.78, voice_speed: float = 1.0, pronunciation_dictionary: str = '') -> str:
-    if not settings.elevenlabs_api_key or not settings.elevenlabs_voice_id:
-        raise RenderConfigurationError("Configure ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to render narration.")
+    if not settings.elevenlabs_api_key:
+        raise RenderConfigurationError("Configure ELEVENLABS_API_KEY to render narration.")
     render_id = _safe_id(render_id)
     root = Path(settings.media_storage_dir).resolve()
     job_dir = (root / render_id).resolve()
