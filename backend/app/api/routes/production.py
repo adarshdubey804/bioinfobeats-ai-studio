@@ -31,7 +31,7 @@ def assemble_production(workflow_id: str, payload: AssemblyRequest, db: Session 
     if not config.get("research_script_id") or len(script.strip()) < 30:
         raise HTTPException(409,"This workflow has no approved research script. Create it from the Research Studio approval handoff.")
     existing=config.get("production_assembly") or {}
-    if existing.get("status") in {"queued","rendering","generating_creatives"}:
+    if existing.get("status") in {"queued","rendering","generating_creatives","retrying"}:
         raise HTTPException(409,"Production assembly is already running.")
     for index, scene in enumerate(payload.scenes, 1):
         from app.api.routes.video import _validate_asset
