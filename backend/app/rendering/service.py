@@ -122,7 +122,7 @@ def apply_pronunciation_dictionary(script: str, dictionary: str) -> str:
         term, pronunciation = (part.strip() for part in line.split("=", 1))
         if not term or not pronunciation or len(term) > 80 or len(pronunciation) > 120:
             raise ValueError("Pronunciation terms must be 1–80 characters and pronunciations 1–120 characters.")
-        spoken = re.sub(r"(?<!\\w)" + re.escape(term) + r"(?!\\w)", lambda _: pronunciation, spoken, flags=re.IGNORECASE)
+        spoken = re.sub(r"(?<!\w)" + re.escape(term) + r"(?!\w)", lambda _: pronunciation, spoken, flags=re.IGNORECASE)
     return spoken
 
 
