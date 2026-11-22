@@ -10,6 +10,7 @@ from app.worker.tasks import execute_workflow
 from app.api.deps import get_current_user, get_owned_workflow
 from app.worker.celery_app import celery_app
 from datetime import datetime, timezone
+from app.worker.job_health import job_health
 
 router = APIRouter()
 
@@ -53,7 +54,7 @@ def queue_workflow(workflow_id: str, db: Session = Depends(get_db), user: User =
 def list_workflow_jobs(workflow_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     get_owned_workflow(workflow_id, user, db)
     runs = db.query(JobRun).filter(JobRun.workflow_id == workflow_id).order_by(JobRun.created_at.desc()).limit(50).all()
-    return [{"id": r.id, "task_type": r.task_type, "celery_task_id": r.celery_task_id, "status": r.status, "progress": r.progress, "error": r.error, "cancel_requested": r.cancel_requested, "attempts": r.attempts, "created_at": r.created_at.isoformat(), "started_at": r.started_at.isoformat() if r.started_at else None, "finished_at": r.finished_at.isoformat() if r.finished_at else None} for r in runs]
+    return [{"id": r.id, "task_type": r.task_type, "celery_task_id": r.celery_task_id, "status": r.status, "progress": r.progress, "error": r.error, "cancel_requested": r.cancel_requested, "attempts": r.attempts, "created_at": r.created_at.isoformat(), "started_at": r.started_at.isoformat() if r.started_at else None, "finished_at": r.finished_at.isoformat() if r.finished_at else None, **job_health(r)} for r in runs]
 
 
 @router.post('/workflows/{workflow_id}/jobs/{job_id}/cancel', tags=['workflows'])
