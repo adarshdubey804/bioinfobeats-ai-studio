@@ -63,6 +63,10 @@ export default function Home() {
   const [reportStart,setReportStart]=useState('2026-11-01');
   const [reportEnd,setReportEnd]=useState('2026-11-22');
   const [ownerReport,setOwnerReport]=useState<any>(null);
+  const [mediaAssets,setMediaAssets]=useState<any[]>([]);
+  const [mediaSearch,setMediaSearch]=useState('');
+  const [mediaFilter,setMediaFilter]=useState('all');
+  const [mediaType,setMediaType]=useState('image');
   const active=workflows.find(w=>w.id===activeId);
   const load=useCallback(async()=>{try{const rows=await request('/workflows');setWorkflows(rows);if(rows.length&&!activeId)setActiveId(rows[0].id);}catch(e){setError((e as Error).message)}},[activeId]);
   const refreshActive=useCallback(async()=>{if(!activeId)return;try{const w=await request('/workflows/'+activeId);setWorkflows(old=>[w,...old.filter(x=>x.id!==w.id)]);}catch(e){setError((e as Error).message)}},[activeId]);
@@ -93,6 +97,9 @@ export default function Home() {
   async function loadIdeas(){await run('ideas-load',async()=>{const data=await request('/content/ideas');setIdeas(data);});}
   async function promoteIdea(id:string){await run('idea-workflow',async()=>{const data=await request('/content/ideas/'+id+'/workflow',{method:'POST'});await load();setActiveId(data.workflow_id);setNotice('Content idea converted into a production workflow.');});}
   async function updateIdeaStatus(id:string,status:string,scheduled_date?:string){await run('idea-status',async()=>{await request('/content/ideas/'+id,{method:'PATCH',body:JSON.stringify({status,scheduled_date:scheduled_date||null})});await loadIdeas();});}
+  async function loadMedia(){await run('media-load',async()=>{const params=new URLSearchParams({q:mediaSearch,media_type:mediaFilter});const rows=await request('/media/library?'+params.toString());setMediaAssets(rows);});}
+  async function uploadMedia(file?:File){if(!file)return;await run('media-upload',async()=>{const form=new FormData();form.append('file',file);const response=await fetch(API+'/media/library?media_type='+mediaType,{method:'POST',headers:{...(localStorage.getItem('bb_access_token')?{Authorization:'Bearer '+localStorage.getItem('bb_access_token')}:{})},body:form});const body=await response.json().catch(()=>({detail:response.statusText}));if(!response.ok)throw new Error(body.detail||'Upload failed');setMediaAssets(old=>[body,...old]);setNotice('Asset uploaded to your personal media library.');});}
+  async function deleteMedia(id:string){await run('media-delete',async()=>{await request('/media/library/'+id,{method:'DELETE'});setMediaAssets(old=>old.filter(asset=>asset.id!==id));setNotice('Asset deleted.');});}
   async function connectGoogle(){await run('google',async()=>{const data=await request('/oauth/google/start');window.location.href=data.authorization_url;});}
   async function fetchOwnerReport(){await run('owner-report',async()=>{const data=await request('/analytics/youtube/channel',{method:'POST',body:JSON.stringify({start_date:reportStart,end_date:reportEnd})});setOwnerReport(data);});}
   async function disconnectGoogle(){await run('google-disconnect',async()=>{await request('/oauth/google',{method:'DELETE'});setGoogleConnected(false);setOwnerReport(null);setNotice('Google connection revoked.');});}
