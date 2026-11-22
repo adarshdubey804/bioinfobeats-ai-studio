@@ -30,8 +30,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prepare local environment
         run: cp .env.example .env
-      - name: Validate Compose configuration
+      - name: Validate local Compose configuration
         run: docker compose config --quiet
+      - name: Validate production Compose configuration
+        env:
+          APP_DOMAIN: studio.example.com
+          POSTGRES_DB: bioinfobeats
+          POSTGRES_USER: bioinfobeats
+          POSTGRES_PASSWORD: ci-postgres-password
+          REDIS_PASSWORD: ci-redis-password
+          DATABASE_URL: postgresql+psycopg://bioinfobeats:ci-postgres-password@db:5432/bioinfobeats
+          REDIS_URL: redis://:ci-redis-password@redis:6379/0
+        run: docker compose -f deploy/compose.production.yml --env-file .env.example config --quiet
       - name: Build and start the full stack
         run: docker compose up -d --build
       - name: Wait for API and verify database-backed authentication
